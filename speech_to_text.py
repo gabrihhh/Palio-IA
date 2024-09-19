@@ -1,21 +1,32 @@
-import audioread
-from pydub import AudioSegment
+from moviepy.editor import AudioFileClip, concatenate_audioclips
 import speech_recognition as sr
 import os
+from pydub import AudioSegment
 
 # Caminho para o arquivo MP3
 mp3_file_path = 'input.mp3'
 wav_file_path = 'audio.wav'
 
-# Converte MP3 para WAV usando pydub
-try:
-    with audioread.audio_open(mp3_file_path) as audio_file:
-        audio = AudioSegment.from_file(mp3_file_path, format='mp3')
-        audio.export(wav_file_path, format='wav')
-        print(f'{mp3_file_path} convertido para {wav_file_path}.')
-except Exception as e:
-    print(f"Erro ao converter MP3 para WAV: {e}")
-    exit()
+#cria arquivo de silencio
+silence_duration_ms = 1000
+silence = AudioSegment.silent(duration=silence_duration_ms)
+silence.export("silence.wav", format="wav")
+
+def convert_mp3_to_wav_with_silence(mp3_file_path, wav_file_path, silence_duration_s=1):
+    # Carregar o arquivo MP3
+    audio_clip = AudioFileClip(mp3_file_path)
+    
+    # Criar um clip de silêncio
+    silence = AudioFileClip("silence.wav").subclip(0, silence_duration_s)
+    
+    # Adicionar silêncio no início
+    final_clip = concatenate_audioclips([silence, audio_clip])
+    
+    # Exportar o arquivo como WAV
+    final_clip.write_audiofile(wav_file_path, codec='pcm_s16le')
+
+
+convert_mp3_to_wav_with_silence("input.mp3", "audio.wav")
 
 # Exclui o arquivo MP3 após a conversão
 if os.path.exists(mp3_file_path):
