@@ -3,6 +3,7 @@ import os
 
 # Caminho para o arquivo de saída
 audio_file = 'output.wav'
+file_path = 'output.txt'
 
 # Inicializar o mecanismo TTS
 engine = pyttsx3.init()
@@ -13,11 +14,11 @@ engine.setProperty('rate', 200)  # Ajuste a velocidade conforme necessário
 # Configurar o volume
 engine.setProperty('volume', 1)  # Volume entre 0 e 1
 
-# Texto para converter em áudio
-text = "Olá, este é um exemplo de texto convertido em áudio."
+with open(file_path, 'r', encoding='utf-8') as file:
+    content = file.read()
 
 # Salvar o áudio em um arquivo WAV
-engine.save_to_file(text, audio_file)
+engine.save_to_file(content, audio_file)
 
 # Executar o áudio
 engine.runAndWait()
@@ -31,6 +32,6 @@ except ImportError:
 except Exception as e:
     print(f"Ocorreu um erro ao tentar reproduzir o áudio: {e}")
 
-# Limpar o arquivo de áudio depois de reproduzir
+# # Limpar o arquivo de áudio depois de reproduzir
 if os.path.exists(audio_file):
     os.remove(audio_file)
