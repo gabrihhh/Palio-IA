@@ -1,3 +1,0 @@
-ligar luz
-desligar luz
-tocar música

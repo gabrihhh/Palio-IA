@@ -1,35 +1,72 @@
 import os
-import speech_recognition as sr
+import json
+import sounddevice as sd
+import vosk
 
-def transcribe_audio(input_wav, output_txt):
-    recognizer = sr.Recognizer()
+# Define o modelo Vosk (baixe o modelo de https://alphacephei.com/vosk/models e extraia na pasta 'model')
+MODEL_PATH = "model"
+if not os.path.exists(MODEL_PATH):
+    print(f"Baixando o modelo e extraindo para {MODEL_PATH}...")
+    # Baixe o modelo manualmente e extraia na pasta "model"
 
-    try:
-        with sr.AudioFile(input_wav) as source:
-            recognizer.adjust_for_ambient_noise(source)
-            audio_data = recognizer.record(source)
-            # Transcrição usando o PocketSphinx com o reconhecimento padrão
-            text = recognizer.recognize_sphinx(audio_data)
-    except FileNotFoundError:
-        print(f"Arquivo {input_wav} não encontrado.")
-        return
-    except sr.UnknownValueError:
-        print("Não foi possível entender o áudio.")
-        return
-    except sr.RequestError as e:
-        print(f"Erro ao tentar se conectar ao serviço de reconhecimento: {e}")
-        return
+# Carrega o modelo
+model = vosk.Model(MODEL_PATH)
 
-    with open(output_txt, 'w') as file:
-        file.write(text)
+# Configura o reconhecimento de áudio (offline)
+samplerate = 16000  # Taxa de amostragem
+device = None       # Use 'None' para o dispositivo de áudio padrão
 
-    print(f"Transcrição concluída e salva em {output_txt}")
+# Variável global para capturar comandos após a palavra "carro"
+waiting_for_command = False
+
+# Função para processar o áudio e identificar palavras
+def recognize_speech():
+    global waiting_for_command
+    # Inicia o microfone
+    with sd.InputStream(samplerate=samplerate, channels=1, dtype='int16', device=device, callback=callback):
+        recognizer = vosk.KaldiRecognizer(model, samplerate)
+
+        print("Diga 'carro' para iniciar comandos...")
+        while True:
+            data = queue.get()
+            if recognizer.AcceptWaveform(data):
+                result = json.loads(recognizer.Result())
+                recognized_text = result['text']
+                print("Você disse:", recognized_text)
+                
+                if "carro" in recognized_text:
+                    print("Comando de ativação detectado: 'carro'. Aguardando comandos...")
+                    waiting_for_command = True
+                elif waiting_for_command:
+                    perform_action(recognized_text)
+
+# Callback de áudio (coleta o áudio do microfone em blocos)
+def callback(indata, frames, time, status):
+    if status:
+        print(status)
+    queue.put(bytes(indata))
+
+# Fila de áudio
+import queue
+queue = queue.Queue()
+
+# Função para realizar uma ação dependendo do comando falado após "carro"
+def perform_action(text):
+    global waiting_for_command
+    if "ligar luz" in text:
+        print("Ligando a luz...")
+        # Código para acionar a luz
+    elif "desligar luz" in text:
+        print("Desligando a luz...")
+        # Código para desligar a luz
+    elif "música" in text:
+        print("Reproduzindo música...")
+        # Código para reproduzir música
+    elif "parar" in text:
+        print("Encerrando comandos.")
+        waiting_for_command = False
+    else:
+        print("Comando não reconhecido.")
 
 if __name__ == "__main__":
-    input_wav = 'input.wav'
-    output_txt = 'input.txt'
-
-    if os.path.exists(output_txt):
-        os.remove(output_txt)
-
-    transcribe_audio(input_wav, output_txt)
+    recognize_speech()
