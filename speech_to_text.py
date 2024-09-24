@@ -1,72 +1,45 @@
-import os
-import json
-import sounddevice as sd
+import pyaudio
 import vosk
+import json
 
-# Define o modelo Vosk (baixe o modelo de https://alphacephei.com/vosk/models e extraia na pasta 'model')
+# Define o modelo Vosk offline
 MODEL_PATH = "model"
-if not os.path.exists(MODEL_PATH):
-    print(f"Baixando o modelo e extraindo para {MODEL_PATH}...")
-    # Baixe o modelo manualmente e extraia na pasta "model"
-
-# Carrega o modelo
 model = vosk.Model(MODEL_PATH)
 
-# Configura o reconhecimento de áudio (offline)
-samplerate = 16000  # Taxa de amostragem
-device = None       # Use 'None' para o dispositivo de áudio padrão
+# Configurações de áudio
+RATE = 16000
+CHUNK = 1024
 
-# Variável global para capturar comandos após a palavra "carro"
+# Inicia PyAudio
+p = pyaudio.PyAudio()
+
+# Abre o stream de áudio
+stream = p.open(format=pyaudio.paInt16, channels=1, rate=RATE, input=True, frames_per_buffer=CHUNK)
+stream.start_stream()
+
+recognizer = vosk.KaldiRecognizer(model, RATE)
 waiting_for_command = False
 
-# Função para processar o áudio e identificar palavras
-def recognize_speech():
-    global waiting_for_command
-    # Inicia o microfone
-    with sd.InputStream(samplerate=samplerate, channels=1, dtype='int16', device=device, callback=callback):
-        recognizer = vosk.KaldiRecognizer(model, samplerate)
+print("Diga 'carro' para iniciar os comandos.")
 
-        print("Diga 'carro' para iniciar comandos...")
-        while True:
-            data = queue.get()
-            if recognizer.AcceptWaveform(data):
-                result = json.loads(recognizer.Result())
-                recognized_text = result['text']
-                print("Você disse:", recognized_text)
-                
-                if "carro" in recognized_text:
-                    print("Comando de ativação detectado: 'carro'. Aguardando comandos...")
-                    waiting_for_command = True
-                elif waiting_for_command:
-                    perform_action(recognized_text)
-
-# Callback de áudio (coleta o áudio do microfone em blocos)
-def callback(indata, frames, time, status):
-    if status:
-        print(status)
-    queue.put(bytes(indata))
-
-# Fila de áudio
-import queue
-queue = queue.Queue()
-
-# Função para realizar uma ação dependendo do comando falado após "carro"
-def perform_action(text):
-    global waiting_for_command
-    if "ligar luz" in text:
-        print("Ligando a luz...")
-        # Código para acionar a luz
-    elif "desligar luz" in text:
-        print("Desligando a luz...")
-        # Código para desligar a luz
-    elif "música" in text:
-        print("Reproduzindo música...")
-        # Código para reproduzir música
-    elif "parar" in text:
-        print("Encerrando comandos.")
-        waiting_for_command = False
-    else:
-        print("Comando não reconhecido.")
-
-if __name__ == "__main__":
-    recognize_speech()
+while True:
+    data = stream.read(CHUNK)
+    if recognizer.AcceptWaveform(data):
+        result = json.loads(recognizer.Result())
+        recognized_text = result['text']
+        print("Você disse:", recognized_text)
+        
+        if "carro" in recognized_text:
+            print("Comando de ativação detectado: 'carro'. Aguardando comandos...")
+            waiting_for_command = True
+        elif waiting_for_command:
+            # Adicione aqui as ações a serem realizadas após o comando "carro"
+            if "ligar luz" in recognized_text:
+                print("Ligando a luz...")
+            elif "desligar luz" in recognized_text:
+                print("Desligando a luz...")
+            elif "música" in recognized_text:
+                print("Reproduzindo música...")
+            elif "parar" in recognized_text:
+                print("Parando comandos.")
+                waiting_for_command = False
