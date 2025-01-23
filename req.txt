@@ -2,10 +2,14 @@ certifi==2024.8.30
 cffi==1.17.1
 charset-normalizer==3.3.2
 colorama==0.4.6
+comtypes==1.4.9
 idna==3.10
 numpy==2.1.1
 PyAudio==0.2.14
 pycparser==2.22
+pypiwin32==223
+pyttsx3==2.98
+pywin32==308
 requests==2.32.3
 scipy==1.15.1
 sounddevice==0.5.0

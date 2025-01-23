@@ -33,14 +33,7 @@ async def falar(res):
 
 
 async def main():
-    while True:
-        entrada_audio = ''
-        entrada_audio = input('\n Ouvindo: \n')
-
-        if entrada_audio.lower() == 'desligar':
-            await falar('Desligândo')
-        if entrada_audio.lower() == 'pausar':
-            await falar('Pausândo')
+    await falar('Passando a música')
 
 asyncio.run(main())
         
