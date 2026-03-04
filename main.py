@@ -28,6 +28,7 @@ import soundfile as sf
 
 from speech_to_text import iniciar_loop_stt, verificar_palavra
 from modules.bluetooth.music import create_controller
+from modules.bluetooth.audio_duck import create_audio_duck
 from modules.llm.client import OllamaClient
 from modules.core.dispatcher import Dispatcher
 
@@ -67,8 +68,8 @@ def falar(texto: str) -> None:
 
 # --- Inicialização ---
 
-def inicializar() -> Dispatcher:
-    """Inicializa todos os módulos e retorna o Dispatcher configurado."""
+def inicializar() -> tuple[Dispatcher, object]:
+    """Inicializa todos os módulos e retorna o Dispatcher e o AudioDuck configurados."""
     logger.info("Inicializando Palio-IA...")
 
     bt = create_controller()
@@ -83,8 +84,11 @@ def inicializar() -> Dispatcher:
     else:
         logger.warning("LLM: Ollama indisponível. Respostas livres não funcionarão.")
 
+    duck = create_audio_duck()
+    logger.info("AudioDuck inicializado.")
+
     dispatcher = Dispatcher(bluetooth=bt, llm=llm, falar_cb=falar)
-    return dispatcher
+    return dispatcher, duck
 
 
 # --- Handler de comandos STT ---
@@ -113,22 +117,30 @@ def _extrair_comando_apos_wake_word(texto: str) -> str:
     return texto.strip()
 
 
-def criar_handler(dispatcher: Dispatcher):
+def criar_handler(dispatcher: Dispatcher, duck):
     """Cria o callback de comando para o loop STT."""
 
     def on_comando(texto: str) -> None:
         logger.info("Wake word detectada. Texto completo: '%s'", texto)
-        comando = _extrair_comando_apos_wake_word(texto)
 
-        if not comando:
-            falar("Oi. Pode falar.")
-            return
+        # Baixa o volume imediatamente ao detectar a wake word
+        duck.on_wake_word()
 
-        resposta = dispatcher.processar(comando)
-        # O PairingManager pode ter chamado falar() diretamente (ex: durante o scan)
-        # Nesse caso o Dispatcher retorna string vazia — não há nada a falar aqui.
-        if resposta:
-            falar(resposta)
+        try:
+            comando = _extrair_comando_apos_wake_word(texto)
+
+            if not comando:
+                falar("Oi. Pode falar.")
+                return
+
+            resposta = dispatcher.processar(comando)
+            # O PairingManager pode ter chamado falar() diretamente (ex: durante o scan)
+            # Nesse caso o Dispatcher retorna string vazia — não há nada a falar aqui.
+            if resposta:
+                falar(resposta)
+        finally:
+            # Restaura o volume sempre, mesmo que ocorra um erro
+            duck.on_done()
 
     return on_comando
 
@@ -136,8 +148,8 @@ def criar_handler(dispatcher: Dispatcher):
 # --- Entry point ---
 
 if __name__ == '__main__':
-    dispatcher = inicializar()
-    handler = criar_handler(dispatcher)
+    dispatcher, duck = inicializar()
+    handler = criar_handler(dispatcher, duck)
 
     falar("Pronto. Pode falar.")
     logger.info("Loop STT iniciado. Wake word: '%s'", WAKE_WORD)
