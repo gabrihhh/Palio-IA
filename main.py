@@ -1,39 +1,149 @@
-import pyttsx3
+"""
+main.py — Palio-IA
+
+Orquestrador principal do assistente de voz Palio.
+
+Fluxo:
+  1. Inicializa todos os módulos (STT, TTS, Bluetooth, LLM)
+  2. Inicia o loop de escuta STT
+  3. Ao detectar wake word "palio", extrai o restante do texto
+  4. Passa o texto ao Dispatcher (comando de música ou conversa LLM)
+  5. Lê a resposta via TTS
+
+Para rodar:
+  python main.py
+
+Pré-requisitos:
+  - Modelo Vosk PT-BR em ./model-ptbr/
+  - Ollama rodando: ollama serve && ollama pull llama3.2:3b  (opcional — TTS funciona sem)
+  - Linux + bluez para controle Bluetooth  (opcional — mock usado em outros sistemas)
+"""
+
+import logging
 import os
-import asyncio
+import sys
+import pyttsx3
+import sounddevice as sd
+import soundfile as sf
 
-async def falar(res):
-    # Inicializar o mecanismo TTS
+from speech_to_text import iniciar_loop_stt, verificar_palavra
+from modules.bluetooth.music import create_controller
+from modules.llm.client import OllamaClient
+from modules.core.dispatcher import Dispatcher
+
+# --- Logging ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("palio")
+
+# --- Wake word ---
+WAKE_WORD = "palio"
+
+
+# --- TTS ---
+
+def falar(texto: str) -> None:
+    """Converte texto em fala e reproduz pelo dispositivo de saída de áudio."""
+    logger.info("TTS: '%s'", texto)
     engine = pyttsx3.init()
-
-    # Configurar a taxa de fala
-    engine.setProperty('rate', 160)  # Ajuste a velocidade conforme necessário
-
-    # Configurar o volume
-    engine.setProperty('volume', 1)  # Volume entre 0 e 1
-
-    # Salvar o áudio em um arquivo WAV
-    engine.save_to_file(res, 'output.wav')
-
-    # Executar o áudio
+    engine.setProperty('rate', 160)
+    engine.setProperty('volume', 1.0)
+    engine.save_to_file(texto, 'output.wav')
     engine.runAndWait()
 
-    # Reproduzir o áudio
     try:
-        import winsound
-        await winsound.PlaySound('output.wav', winsound.SND_FILENAME)
-    except ImportError:
-        print(f"Por favor, instale o módulo 'winsound' para reprodução de áudio no Windows.")
+        data, samplerate = sf.read('output.wav')
+        sd.play(data, samplerate)
+        sd.wait()
     except Exception as e:
-        print(f"Ocorreu um erro ao tentar reproduzir o áudio: {e}")
+        logger.error("Erro ao reproduzir TTS: %s", e)
+    finally:
+        if os.path.exists('output.wav'):
+            os.remove('output.wav')
 
-    # # Limpar o arquivo de áudio depois de reproduzir
-    if os.path.exists('output.wav'):
-        os.remove('output.wav')
+
+# --- Inicialização ---
+
+def inicializar() -> Dispatcher:
+    """Inicializa todos os módulos e retorna o Dispatcher configurado."""
+    logger.info("Inicializando Palio-IA...")
+
+    bt = create_controller()
+    if bt.connected:
+        logger.info("Bluetooth: controlador conectado.")
+    else:
+        logger.warning("Bluetooth: não conectado. Comandos de música indisponíveis.")
+
+    llm = OllamaClient(model="llama3.2:3b")
+    if llm.available:
+        logger.info("LLM: Ollama disponível.")
+    else:
+        logger.warning("LLM: Ollama indisponível. Respostas livres não funcionarão.")
+
+    dispatcher = Dispatcher(bluetooth=bt, llm=llm, falar_cb=falar)
+    return dispatcher
 
 
-async def main():
-    await falar('Passando a música')
+# --- Handler de comandos STT ---
 
-asyncio.run(main())
-        
+def _extrair_comando_apos_wake_word(texto: str) -> str:
+    """
+    Remove a wake word do início do texto reconhecido.
+    Ex: "palio próxima música" → "próxima música"
+    """
+    import unicodedata
+
+    def _norm(t: str) -> str:
+        return ''.join(
+            c for c in unicodedata.normalize('NFD', t) if unicodedata.category(c) != 'Mn'
+        ).lower()
+
+    texto_norm = _norm(texto)
+    wake_norm = _norm(WAKE_WORD)
+
+    if texto_norm.startswith(wake_norm):
+        return texto[len(WAKE_WORD):].strip()
+    # Wake word no meio da frase — retorna tudo após ela
+    idx = texto_norm.find(wake_norm)
+    if idx >= 0:
+        return texto[idx + len(WAKE_WORD):].strip()
+    return texto.strip()
+
+
+def criar_handler(dispatcher: Dispatcher):
+    """Cria o callback de comando para o loop STT."""
+
+    def on_comando(texto: str) -> None:
+        logger.info("Wake word detectada. Texto completo: '%s'", texto)
+        comando = _extrair_comando_apos_wake_word(texto)
+
+        if not comando:
+            falar("Oi. Pode falar.")
+            return
+
+        resposta = dispatcher.processar(comando)
+        # O PairingManager pode ter chamado falar() diretamente (ex: durante o scan)
+        # Nesse caso o Dispatcher retorna string vazia — não há nada a falar aqui.
+        if resposta:
+            falar(resposta)
+
+    return on_comando
+
+
+# --- Entry point ---
+
+if __name__ == '__main__':
+    dispatcher = inicializar()
+    handler = criar_handler(dispatcher)
+
+    falar("Pronto. Pode falar.")
+    logger.info("Loop STT iniciado. Wake word: '%s'", WAKE_WORD)
+
+    try:
+        iniciar_loop_stt(on_comando=handler, wake_word=WAKE_WORD)
+    except KeyboardInterrupt:
+        logger.info("Encerrando Palio-IA.")
+        sys.exit(0)

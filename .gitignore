@@ -1,2 +1,6 @@
 venv
 model-ptbr
+__pycache__/
+*.pyc
+*.pyo
+.bluetooth_devices
