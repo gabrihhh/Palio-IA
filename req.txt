@@ -13,8 +13,19 @@ pywin32==308
 requests==2.32.3
 scipy==1.15.1
 sounddevice==0.5.0
+soundfile==0.13.1
 srt==3.5.3
 tqdm==4.66.5
 urllib3==2.2.3
 vosk==0.3.45
 websockets==13.1
+
+# Linux only (Rock Pi 4B / Ubuntu 22.04):
+# dbus-python  — controle Bluetooth AVRCP via bluez
+#   sudo apt install python3-dbus  (preferível ao pip no Linux)
+#   ou: pip install dbus-python
+
+# Ollama (não é pacote pip — instalado separadamente):
+#   curl -fsSL https://ollama.com/install.sh | sh
+#   ollama pull llama3.2:3b
+
