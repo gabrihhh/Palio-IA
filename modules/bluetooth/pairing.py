@@ -613,21 +613,6 @@ class PairingManager:
 
 
 # ---------------------------------------------------------------------------
-# Mock para desenvolvimento no Windows
-# ---------------------------------------------------------------------------
-
-class MockPairingManager(PairingManager):
-    """
-    Subclasse de PairingManager que funciona no Windows para desenvolvimento.
-    Toda a lógica de estado é real; apenas as chamadas bluetoothctl são simuladas.
-    """
-
-    def __init__(self, falar_cb: Callable[[str], None]) -> None:
-        super().__init__(falar_cb)
-        logger.info("MockPairingManager ativo (modo desenvolvimento).")
-
-
-# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 

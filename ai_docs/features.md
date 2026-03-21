@@ -5,13 +5,11 @@
 ### Reconhecimento de Voz Offline (STT)
 **Descrição**: Captura áudio contínuo do microfone e converte fala em texto usando o modelo Vosk PT-BR localmente, sem depender de internet.
 
-**Casos de Uso**: Base de todo o sistema de comandos por voz. Sem STT, nenhum outro módulo funciona.
-
 **Componentes Envolvidos**:
-- `speech_to_text.py` (arquivo principal do módulo)
-- Modelo `model-ptbr/` (Vosk, deve ser baixado manualmente)
-- `PyAudio` para captura do microfone
-- `scipy.signal.resample` para ajuste de taxa de amostragem
+- `speech_to_text.py` — módulo principal do STT
+- `model-ptbr/` — modelo Vosk (deve ser baixado manualmente)
+- `PyAudio` — captura do microfone
+- `scipy.signal.resample` — ajuste de taxa de amostragem
 
 **Fluxo de execução**:
 1. Detecta o melhor microfone disponível (mais próximo de 16kHz)
@@ -19,7 +17,7 @@
 3. Lê chunks de 4096 amostras em loop contínuo
 4. Se taxa do microfone != 16kHz, reamostra para 16kHz (Vosk exige)
 5. Alimenta o recognizer Vosk com os bytes de áudio
-6. Quando `AcceptWaveform()` retorna `True`, processa o resultado completo
+6. Quando `AcceptWaveform()` retorna `True`, processa o resultado final
 7. Extrai texto reconhecido do JSON de resultado
 
 **Dependências**: Modelo Vosk PT-BR em `./model-ptbr/`
@@ -27,177 +25,206 @@
 ---
 
 ### Auto-seleção de Microfone
-**Descrição**: Itera por todos os dispositivos de áudio disponíveis e seleciona automaticamente o microfone cuja taxa de amostragem nativa é mais próxima de 16kHz.
+**Descrição**: Itera por todos os dispositivos de áudio disponíveis e seleciona automaticamente o microfone cuja taxa nativa é mais próxima de 16kHz.
 
-**Casos de Uso**: Portabilidade entre diferentes ambientes de hardware sem configuração manual.
+**Componentes Envolvidos**: `speech_to_text.py` — função `get_best_microphone()`
 
-**Componentes Envolvidos**: `speech_to_text.py:42-61` — função `get_best_microphone()`
-
-**Comportamento**: Se nenhum microfone for encontrado, o programa exibe mensagem e encerra com `exit(1)`.
+**Comportamento**: Se nenhum microfone for encontrado, o programa encerra com `exit(1)`.
 
 ---
 
 ### Resampling de Áudio
 **Descrição**: Converte áudio capturado na taxa nativa do microfone para 16kHz (taxa exigida pelo Vosk).
 
-**Casos de Uso**: Necessário quando o microfone opera em 44.1kHz ou 48kHz (padrão de hardware de consumo).
-
-**Componentes Envolvidos**: `speech_to_text.py:79-84` — função `resample_audio()`
-
-**Implementação**:
-```python
-def resample_audio(audio_data, original_rate, target_rate):
-    if original_rate != target_rate:
-        num_samples = int(len(audio_data) * target_rate / original_rate)
-        return resample(audio_data, num_samples)
-    return audio_data
-```
+**Componentes Envolvidos**: `speech_to_text.py` — função `resample_audio()`
 
 ---
 
-### Detecção de Wake Word + Comando
-**Descrição**: Após o STT converter fala em texto, verifica se a wake word está presente e identifica qual comando foi solicitado.
+### Wake Word + Detecção de Comando
+**Descrição**: Após o STT converter fala em texto, verifica se a wake word está presente e aciona o dispatcher.
 
-**Casos de Uso**: Ativar o assistente apenas quando a palavra-chave for detectada, evitando execuções indesejadas.
+**Wake word**: `"palio"`
 
-**Componentes Envolvidos**: `speech_to_text.py:109-117`
-
-**Wake word atual**: `"carro"` (planejado mudar para `"Palio"`)
-
-**Comandos implementados**:
-| Comando falado          | Ação executada           |
-|-------------------------|--------------------------|
-| "carro próxima"         | Passar a música          |
-| "carro voltar"          | Voltar a música          |
-
-**Normalização**: Usa `verificar_palavra()` que remove acentos e ignora maiúsculas antes de comparar, tornando a detecção robusta a variações de pronúncia.
+**Normalização**: Usa `verificar_palavra()` que remove acentos e ignora maiúsculas antes de comparar.
 
 ---
 
 ### Síntese de Voz Offline (TTS)
-**Descrição**: Converte texto em fala usando `pyttsx3` offline, salva em arquivo WAV temporário e reproduz o áudio.
+**Descrição**: Converte texto em fala usando `pyttsx3` offline, salva em arquivo WAV temporário e reproduz via `sounddevice`.
 
-**Casos de Uso**: Feedback de voz para o motorista — confirmar comandos, responder perguntas, anunciar informações.
+**Componentes Envolvidos**: `main.py` — função `falar()`
 
-**Componentes Envolvidos**: `main.py` — função `falar(res)`
-
-**Fluxo de execução**:
+**Fluxo**:
 1. Inicializa engine pyttsx3
-2. Configura taxa de fala: 160 palavras/minuto
-3. Configura volume: 1.0 (máximo)
-4. Salva texto como `output.wav`
-5. Executa `runAndWait()` (processa a fila de comandos da engine)
-6. Reproduz `output.wav` com `winsound` (somente Windows)
-7. Remove `output.wav` após reprodução
-
-**Bug conhecido**: `await winsound.PlaySound(...)` está errado — `winsound` não é async. Ver [Gotchas](gotchas.md).
+2. Configura taxa: 160 palavras/minuto, volume: 1.0
+3. Salva texto como `output.wav` via `engine.save_to_file()`
+4. Reproduz com `sounddevice` + `soundfile`
+5. Remove `output.wav` após reprodução
 
 ---
 
 ### Normalização de Texto (Utilitário)
 **Descrição**: Funções auxiliares para comparação de strings sem sensibilidade a acentos ou capitalização.
 
-**Componentes Envolvidos**: `speech_to_text.py:9-21`
+**Componentes Envolvidos**: `speech_to_text.py`
 
 ```python
-remove_acentos(texto)           # Normaliza NFD e remove caracteres Mn
+remove_acentos(texto)              # Normaliza NFD e remove diacríticos
 verificar_palavra(frase, palavra)  # Busca substring ignorando acentos e case
 ```
 
 ---
 
-## Funcionalidades Planejadas
+### Orquestrador Principal
+**Descrição**: `main.py` integra todos os módulos em um único loop de execução contínua.
 
-### Arquivo Pai / Orquestrador
-**Descrição**: Um `main.py` central que integre os módulos STT e TTS em um único loop de execução.
-
-**Fluxo esperado**:
+**Fluxo**:
 ```
 Loop contínuo:
   1. STT ouve microfone
-  2. Detecta wake word "Palio"
-  3. Identifica comando ou encaminha para LLM
-  4. Executa ação
-  5. TTS confirma ação em voz
-  6. Volta ao passo 1
+  2. Detecta wake word "palio"
+  3. Extrai o comando após a wake word
+  4. Duck de áudio reduz o volume
+  5. Dispatcher roteia para música, pareamento ou LLM
+  6. TTS fala a resposta
+  7. Duck restaura o volume
+  8. Volta ao passo 1
 ```
 
 ---
 
-### Wake Word Personalizada: "Palio"
-**Descrição**: Substituir "carro" por "Palio" como wake word. Avaliar uso do Vosk atual vs. engine dedicada (Porcupine/Picovoice) para melhor precisão e menor consumo de CPU.
+### Dispatcher de Intenção
+**Descrição**: Roteador central que recebe o texto do STT e decide qual módulo executar.
 
-**Decisão pendente**: Vosk (simples, já integrado) vs. Porcupine (mais preciso, menor CPU, mas requer chave de API para uso comercial).
+**Componentes Envolvidos**: `modules/core/dispatcher.py`
+
+**Prioridade de roteamento**:
+1. Modo pareamento ativo → `PairingManager`
+2. Comando de pareamento/dispositivos → `PairingManager`
+3. Comando de música mapeado → `BluetoothMusicController`
+4. Nenhum dos anteriores → `OllamaClient` (LLM)
 
 ---
 
-### Integração com LLM Local (Ollama)
-**Descrição**: Enviar comandos/perguntas não mapeadas para um LLM local rodando no Rock Pi 4B via Ollama (LLaMA/Mistral quantizado).
+### Controle de Música via Bluetooth (AVRCP)
+**Descrição**: Controla o player de música do celular conectado via Bluetooth AVRCP usando bluez + dbus.
 
-**Fluxo esperado**:
+**Componentes Envolvidos**: `modules/bluetooth/music.py`
+
+**Comandos reconhecidos**:
+| Frase dita | Ação |
+|---|---|
+| "próxima", "passa", "skip" | Próxima faixa |
+| "volta", "anterior" | Faixa anterior |
+| "pausa", "para" | Pausar |
+| "toca", "play", "continua" | Retomar |
+| "que música é essa" | Info da faixa atual |
+
+**Requisito**: Linux + bluez + `python3-dbus`
+
+---
+
+### Pareamento Bluetooth por Voz
+**Descrição**: Fluxo completo de pareamento de dispositivos Bluetooth controlado por voz, com persistência em `data/devices.json`.
+
+**Componentes Envolvidos**: `modules/bluetooth/pairing.py`
+
+**Modos**:
+- **Manual** (`"modo parear"`): scan ao vivo → usuário escolhe dispositivo → pair + trust + connect + salva
+- **Automático** (`"pareamento automático"`): conecta o último sink e source salvos
+- **Gerenciamento**: listar, remover, reconectar dispositivos salvos
+
+---
+
+### Audio Duck
+**Descrição**: Reduz o volume do sink de saída ao detectar a wake word e restaura após o TTS terminar.
+
+**Componentes Envolvidos**: `modules/bluetooth/audio_duck.py`
+
+**Comportamento**:
+- `on_wake_word()` → salva volume atual → aplica 20% instantaneamente
+- `on_done()` → restaura volume original
+
+**Requisito**: Linux + PipeWire + `pactl`
+
+---
+
+### LLM Local (Ollama)
+**Descrição**: Responde perguntas e processa comandos não mapeados usando LLM local com persona "Palio".
+
+**Componentes Envolvidos**: `modules/llm/client.py`, `modules/llm/persona.py`
+
+**Modelo padrão**: `llama3.2:3b`
+
+**Persona**: O assistente fala como se fosse o próprio carro Fiat Palio — direto, informal, humor seco.
+
+**Requisito**: Ollama instalado e rodando (`ollama serve`)
+
+---
+
+## Funcionalidades Planejadas
+
+### Migração de Saída de Áudio: Bluetooth → 3.5mm AUX
+**Descrição**: Trocar a saída de áudio do Rock Pi para o rádio do carro de Bluetooth A2DP para cabo 3.5mm direto na entrada AUX do rádio.
+
+**Motivação**:
+- Elimina o pareamento do rádio — só o celular precisa ser pareado
+- Resolve o problema do primeiro boot (áudio sempre disponível, sem depender de Bluetooth)
+- Conexão mais estável, sem dropout de Bluetooth
+- Menos carga no chip Bluetooth (uma conexão ao invés de duas)
+
+**Arquitetura atual:**
 ```
-Fala → STT → "Palio, qual é a capital da França?" 
-→ Não é comando mapeado 
-→ Envia para Ollama API local 
-→ Recebe resposta 
-→ TTS fala a resposta
+Celular → Bluetooth A2DP (entrada) → Rock Pi → Bluetooth A2DP (saída) → Rádio
+```
+**Arquitetura alvo:**
+```
+Celular → Bluetooth A2DP (entrada) → Rock Pi → 3.5mm cabo → Rádio AUX
 ```
 
-**Interface**: Ollama expõe API REST em `http://localhost:11434`
+**Impacto no código:**
+- Role `"source"` em `modules/bluetooth/pairing.py` vira obsoleto (só haverá pareamento de entrada/celular)
+- Docs e diagramas de integração precisam ser atualizados
+
+**Pré-requisito físico**: Confirmar se o rádio do Fiat Palio tem entrada AUX 3.5mm.
+
+**Status**: Aguardando confirmação do AUX no rádio.
 
 ---
 
-### Controle de Música via Bluetooth
-**Descrição**: Controlar música tocando no celular conectado ao carro via Bluetooth. Comandos: próxima, anterior, pausar, tocar, aumentar/diminuir volume.
+### Controle de Volume por Voz
+**Descrição**: Aumentar ou diminuir o volume do sistema por comando de voz.
 
-**Tecnologia prevista**: MPRIS (Linux) ou controle Bluetooth AVRCP
+**Componente preparado**: `modules/bluetooth/audio.py` — `BluetoothAudioController` (implementado, ainda não integrado ao dispatcher)
 
----
-
-### Controle de Volume
-**Descrição**: Aumentar ou diminuir volume do sistema por voz.
-
-**Tecnologia prevista**: `subprocess` com `amixer` (Linux/Rock Pi) ou `pulsectl`
+**Integração pendente**: Adicionar intents de volume no `dispatcher.py` e conectar ao `BluetoothAudioController`.
 
 ---
 
-### Navegação GPS
-**Descrição**: Abrir app de navegação e definir destino por voz.
+## Fora do Escopo (removido dos planos)
 
-**A SER COMPLETADO**: Tecnologia e integração a definir. Possível uso de `subprocess` para abrir Google Maps / OsmAnd no celular via ADB ou API.
-
----
-
-### Fazer/Atender Ligações
-**Descrição**: Controle de chamadas telefônicas por voz.
-
-**A SER COMPLETADO**: Requer integração com Bluetooth HFP (Hands-Free Profile). Tecnologia a definir.
+- **Navegação GPS** — complexidade alta, sem definição de integração, removido dos planos por enquanto
+- **Chamadas telefônicas** — requer HFP, removido dos planos por enquanto
+- **Clima / APIs externas** — o projeto é 100% offline; funcionalidades que exigem internet não serão implementadas
 
 ---
 
-### Relatório de Hora, Data e Clima
-**Descrição**: Responder perguntas como "que horas são?" ou "como está o tempo?" por voz.
+## Princípio fundamental
 
-- **Hora/Data**: `datetime` da stdlib Python (offline)
-- **Clima**: Requer API externa (OpenWeatherMap ou similar) — depende de conectividade
-
----
-
-## Funcionalidades Deprecated / Removidas
-
-Nenhuma funcionalidade foi explicitamente deprecada até o momento.
+> **O projeto é 100% offline.** Toda feature nova deve funcionar sem conexão com internet. Qualquer funcionalidade que exija rede está fora do escopo.
 
 ---
 
 ## Evolução do Projeto por Versão
 
-| Versão | Descrição                                    |
-|--------|----------------------------------------------|
-| v0.0.1 | Criação dos módulos TTS e STT iniciais        |
-| v0.0.2 | TTS offline com pyttsx3                       |
-| v0.0.3 | Melhorias gerais                              |
-| v0.0.4 | Comandos de voz básicos                       |
-| v0.0.5 | Speech (melhorias STT)                        |
-| v0.0.6 | STT offline com Vosk                          |
-| v0.0.7 | Voz e reconhecimento configurados (atual)     |
-| Futuro | Integração dos módulos + LLM + Bluetooth      |
+| Versão | Descrição |
+|--------|-----------|
+| v0.0.1 | Criação dos módulos TTS e STT iniciais |
+| v0.0.2 | TTS offline com pyttsx3 |
+| v0.0.3 | Melhorias gerais |
+| v0.0.4 | Comandos de voz básicos |
+| v0.0.5 | Melhorias STT |
+| v0.0.6 | STT offline com Vosk |
+| v0.0.7 | Voz e reconhecimento configurados |
+| v0.0.8 | Migração para sounddevice (cross-platform), remoção do winsound |
+| v0.0.9 | Bluetooth AVRCP, pareamento por voz, LLM Ollama, AudioDuck, Dispatcher |

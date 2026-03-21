@@ -27,6 +27,7 @@ import sounddevice as sd
 import soundfile as sf
 
 from speech_to_text import iniciar_loop_stt, verificar_palavra
+from modules.bluetooth.audio import create_volume_controller
 from modules.bluetooth.music import create_controller
 from modules.bluetooth.audio_duck import create_audio_duck
 from modules.llm.client import OllamaClient
@@ -87,7 +88,10 @@ def inicializar() -> tuple[Dispatcher, object]:
     duck = create_audio_duck()
     logger.info("AudioDuck inicializado.")
 
-    dispatcher = Dispatcher(bluetooth=bt, llm=llm, falar_cb=falar)
+    volume = create_volume_controller()
+    logger.info("VolumeController inicializado.")
+
+    dispatcher = Dispatcher(bluetooth=bt, llm=llm, falar_cb=falar, volume=volume)
     return dispatcher, duck
 
 
