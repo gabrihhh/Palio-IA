@@ -6,7 +6,9 @@ Palio-IA é um assistente de voz embarcado desenvolvido para operar dentro de um
 
 > **Princípio fundamental: o projeto é 100% offline. Toda feature deve funcionar sem internet.**
 
-O projeto está em desenvolvimento ativo (v0.0.9) com arquitetura modular.
+**Arquitetura de áudio**: Celular conecta via BT A2DP → Rock Pi → cabo P2 3.5mm → rádio do carro. Microfone USB para entrada de voz.
+
+O projeto está em desenvolvimento ativo (v0.1.0) com arquitetura modular.
 
 ## Documentação Disponível
 
@@ -42,4 +44,4 @@ O projeto está em desenvolvimento ativo (v0.0.9) com arquitetura modular.
 - **Hardware alvo**: Radxa ROCK 4B — Debian 12 Bookworm ARM64 (CLI, sem desktop)
 - **Modelo de voz**: Vosk PT-BR (`model-ptbr/`) — deve ser baixado manualmente (não incluso no git)
 - **Setup**: `python3 -m venv --system-site-packages venv && pip install -r req.txt`
-- **Versão atual**: v0.0.9
+- **Versão atual**: v0.2.0

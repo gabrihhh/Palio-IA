@@ -36,8 +36,12 @@ section() { echo -e "\n${BLUE}=== $* ===${NC}"; }
 
 # --- Diretório do projeto ---
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-USER_NAME="${SUDO_USER:-$(whoami)}"
-USER_HOME=$(eval echo "~$USER_NAME")
+USER_NAME="root"
+USER_HOME="/root"
+
+# Para root: define runtime dir do PipeWire
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/0}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
 
 log "Diretório do projeto: $PROJECT_DIR"
 log "Usuário: $USER_NAME"
@@ -47,9 +51,9 @@ log "Usuário: $USER_NAME"
 # =============================================================================
 section "Verificando pré-requisitos"
 
-# Requer root para apt e systemd
+# Requer root
 if [[ $EUID -ne 0 ]]; then
-    error "Execute com sudo: sudo bash setup.sh"
+    error "Execute como root: sudo bash setup.sh"
 fi
 
 # Verifica internet
@@ -203,43 +207,19 @@ systemctl restart bluetooth
 # =============================================================================
 # 8. Serviço systemd (boot automático)
 # =============================================================================
-section "Configurando serviço systemd"
+section "Configurando serviços systemd"
 
-SERVICE_FILE="/etc/systemd/system/palio-ia.service"
-
-cat > "$SERVICE_FILE" << EOF
-[Unit]
-Description=Palio-IA Voice Assistant
-After=network.target bluetooth.target sound.target
-Wants=bluetooth.target
-
-[Service]
-Type=simple
-User=$USER_NAME
-WorkingDirectory=$PROJECT_DIR
-ExecStartPre=/bin/sleep 5
-ExecStart=$PROJECT_DIR/venv/bin/python main.py
-Restart=on-failure
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-Environment="PYTHONUNBUFFERED=1"
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Serviço para o Ollama (garante que sobe antes do Palio)
+# --- Ollama ---
 OLLAMA_SERVICE="/etc/systemd/system/ollama.service"
 if [[ ! -f "$OLLAMA_SERVICE" ]]; then
-    cat > "$OLLAMA_SERVICE" << EOF
+    cat > "$OLLAMA_SERVICE" << 'EOF'
 [Unit]
 Description=Ollama LLM Server
 After=network.target
 
 [Service]
 Type=simple
-User=$USER_NAME
+User=root
 ExecStart=/usr/local/bin/ollama serve
 Restart=on-failure
 RestartSec=5
@@ -251,8 +231,32 @@ EOF
     log "Serviço ollama.service criado."
 fi
 
-# Atualiza dependência do palio para aguardar ollama
-sed -i 's/After=network.target bluetooth.target sound.target/After=network.target bluetooth.target sound.target ollama.service/' "$SERVICE_FILE"
+# --- Palio-IA ---
+SERVICE_FILE="/etc/systemd/system/palio-ia.service"
+
+cat > "$SERVICE_FILE" << EOF
+[Unit]
+Description=Palio-IA Voice Assistant
+After=network.target bluetooth.target sound.target ollama.service
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$PROJECT_DIR
+ExecStartPre=/bin/sleep 8
+ExecStart=$PROJECT_DIR/venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment="PYTHONUNBUFFERED=1"
+Environment="XDG_RUNTIME_DIR=/run/user/0"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/0/bus"
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 systemctl daemon-reload
 systemctl enable ollama.service
@@ -261,17 +265,9 @@ systemctl enable palio-ia.service
 log "Serviços systemd configurados."
 
 # =============================================================================
-# 9. Ajusta permissões
+# 9. Configuração de áudio (PipeWire + Bluetooth A2DP sink + P2)
 # =============================================================================
-section "Ajustando permissões"
-
-chown -R "$USER_NAME:$USER_NAME" "$PROJECT_DIR"
-log "Permissões ajustadas."
-
-# =============================================================================
-# 10. Configuração de áudio Bluetooth (PipeWire A2DP sink+source + loopback)
-# =============================================================================
-section "Configurando áudio Bluetooth (PipeWire)"
+section "Configurando áudio (PipeWire + P2)"
 
 BT_CONFIG_SCRIPT="$PROJECT_DIR/scripts/bluetooth_config.sh"
 
@@ -297,31 +293,20 @@ echo -e "  Projeto:         $PROJECT_DIR"
 echo -e "  Venv:            $VENV_DIR"
 echo -e "  Modelo Vosk:     $VOSK_DIR"
 echo -e "  Modelo LLM:      llama3.2:3b (via Ollama)"
-echo -e "  Boot automático: palio-ia.service (systemd)"
-echo -e "  Áudio BT:        PipeWire A2DP sink+source configurado"
+echo -e "  Boot automático: palio-ia.service + ollama.service (systemd)"
+echo -e "  Áudio:           PipeWire A2DP sink → saída P2"
 echo ""
-echo -e "${YELLOW}Próximo passo: parear os dispositivos Bluetooth${NC}"
+echo -e "${YELLOW}Próximos passos:${NC}"
 echo ""
-echo -e "  Use o script interativo:"
-echo -e "  ${BLUE}bash scripts/pair_bluetooth.sh${NC}"
+echo -e "  1. Conecte o cabo P2 do Rock Pi na entrada AUX do rádio"
+echo -e "  2. Reinicie para testar o boot automático:"
+echo -e "     ${BLUE}reboot${NC}"
 echo ""
-echo -e "  Ou manualmente via bluetoothctl:"
-echo -e "  ${BLUE}bluetoothctl${NC}"
-echo -e "    power on"
-echo -e "    discoverable on"
-echo -e "    pairable on"
-echo -e "    agent on"
-echo -e "    default-agent"
-echo -e "    scan on"
-echo -e "    pair <MAC_DO_CELULAR>"
-echo -e "    trust <MAC_DO_CELULAR>"
-echo -e "    pair <MAC_DO_RADIO>"
-echo -e "    trust <MAC_DO_RADIO>"
-echo -e "    exit"
+echo -e "  3. Após o boot, diga ${GREEN}'carro modo de pareamento'${NC} para parear o celular"
+echo -e "     (vá nas configurações de BT do celular e conecte ao Rock Pi)"
 echo ""
-echo -e "${YELLOW}Depois reinicie para testar o boot automático:${NC}"
-echo -e "  ${BLUE}sudo reboot${NC}"
+echo -e "  4. Diga ${GREEN}'carro toca'${NC} para testar o controle de música"
 echo ""
-echo -e "${GREEN}Após o reboot, o Palio-IA sobe sozinho. Para ver os logs:${NC}"
+echo -e "${GREEN}Para ver os logs em tempo real:${NC}"
 echo -e "  ${BLUE}journalctl -u palio-ia.service -f${NC}"
 echo ""

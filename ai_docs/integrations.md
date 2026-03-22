@@ -56,7 +56,7 @@ sudo apt install python3-dbus bluez bluez-utils espeak-ng portaudio19-dev \
 **Tipo**: Dispositivo Android/iOS conectado via Bluetooth
 
 **Protocolos**:
-- **A2DP** — recebe o stream de áudio do celular no Rock Pi
+- **A2DP** — recebe o stream de áudio do celular no Rock Pi (Rock Pi age como sink/destino)
 - **AVRCP** — controla o player de música do celular (próxima, anterior, pausa, play, info)
 
 **Implementação**: `modules/bluetooth/music.py` via dbus + bluez
@@ -66,7 +66,10 @@ sudo apt install python3-dbus bluez bluez-utils espeak-ng portaudio19-dev \
 sudo apt install bluez bluez-utils python3-dbus
 ```
 
-**Pareamento**: Gerenciado por voz via `modules/bluetooth/pairing.py` — scan, pair, trust, connect, persistência em `data/devices.json`.
+**Pareamento**: Gerenciado por voz via `modules/bluetooth/pairing.py`.
+- O Rock Pi fica em modo visível/pareável aguardando o celular conectar (não o contrário)
+- Apenas 1 dispositivo salvo por vez em `data/devices.json`
+- Sem conexão automática no boot — aguarda comando "carro conectar"
 
 ---
 
@@ -76,12 +79,14 @@ sudo apt install bluez bluez-utils python3-dbus
 
 **Arquitetura**:
 ```
-[Celular] → A2DP sink → PipeWire → loopback → A2DP source → [Rádio do carro]
-                                        ↑
-                              TTS misturado aqui
+[Celular] → BT A2DP sink → PipeWire → loopback → saída analógica (P2) → [Rádio do carro]
+                                           ↑
+                                 TTS misturado aqui
 ```
 
-**Controle de volume**: `pactl` (CLI do PipeWire) — usado pelo `AudioDuck` e futuro controle de volume por voz.
+**Saída física**: Cabo P2 (3.5mm) conectado diretamente na entrada AUX do rádio do Fiat Palio. O rádio **não** é pareado via Bluetooth.
+
+**Controle de volume**: `pactl` com `@DEFAULT_SINK@` — aponta para o sink analógico (P2). Usado pelo `AudioDuck` e futuro controle de volume por voz.
 
 **Requisitos**:
 ```bash
@@ -131,9 +136,9 @@ sudo apt install espeak-ng
 
 ```
                     ┌─────────────────────────────────────────┐
-                    │           ARM64 Ubuntu                   │
+                    │           Debian 12 ARM64                │
                     │                                          │
-  [Microfone] ──────┤→ PyAudio → Vosk (model-ptbr) → STT     │
+  [Mic USB] ────────┤→ PyAudio → Vosk (model-ptbr) → STT     │
                     │                    ↓                     │
                     │           Dispatcher de intenção         │
                     │          /          |          \          │
@@ -144,10 +149,10 @@ sudo apt install espeak-ng
                     │       ↘          ↓          ↙           │
                     │         pyttsx3 + espeak-ng (TTS)        │
                     │              ↓                           │
-  [Alto-falante] ←──┤       sounddevice reproduz               │
+                    │       sounddevice → sink P2              │
                     │                                          │
-                    │  [Bluetooth] ←──→ [Celular]              │
-                    │    A2DP (música) + AVRCP (controle)      │
+                    │  [BT A2DP sink] ←── [Celular]           │
+                    │  música + AVRCP → cabo P2 → [Rádio]     │
                     └─────────────────────────────────────────┘
 ```
 

@@ -22,6 +22,7 @@ Pré-requisitos:
 import logging
 import os
 import sys
+import numpy as np
 import pyttsx3
 import sounddevice as sd
 import soundfile as sf
@@ -42,7 +43,28 @@ logging.basicConfig(
 logger = logging.getLogger("palio")
 
 # --- Wake word ---
-WAKE_WORD = "palio"
+WAKE_WORD = "carro"
+
+
+# --- Som de boot ---
+
+def tocar_boot() -> None:
+    """Toca dois bipes curtos e suaves como sinal de inicialização."""
+    sample_rate = 44100
+    freq = 880       # Lá5 — tom limpo e discreto
+    duration = 0.12  # segundos por bipe
+    gap = 0.08       # pausa entre bipes
+
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    bipe = (np.sin(2 * np.pi * freq * t) * 0.3).astype(np.float32)
+    silencio = np.zeros(int(sample_rate * gap), dtype=np.float32)
+
+    audio = np.concatenate([bipe, silencio, bipe])
+    try:
+        sd.play(audio, samplerate=sample_rate)
+        sd.wait()
+    except Exception as e:
+        logger.warning("Não foi possível tocar som de boot: %s", e)
 
 
 # --- TTS ---
@@ -69,8 +91,8 @@ def falar(texto: str) -> None:
 
 # --- Inicialização ---
 
-def inicializar() -> tuple[Dispatcher, object]:
-    """Inicializa todos os módulos e retorna o Dispatcher e o AudioDuck configurados."""
+def inicializar() -> tuple[Dispatcher, object, object]:
+    """Inicializa todos os módulos e retorna o Dispatcher, AudioDuck e VolumeController."""
     logger.info("Inicializando Palio-IA...")
 
     bt = create_controller()
@@ -92,7 +114,7 @@ def inicializar() -> tuple[Dispatcher, object]:
     logger.info("VolumeController inicializado.")
 
     dispatcher = Dispatcher(bluetooth=bt, llm=llm, falar_cb=falar, volume=volume)
-    return dispatcher, duck
+    return dispatcher, duck, volume
 
 
 # --- Handler de comandos STT ---
@@ -121,7 +143,7 @@ def _extrair_comando_apos_wake_word(texto: str) -> str:
     return texto.strip()
 
 
-def criar_handler(dispatcher: Dispatcher, duck):
+def criar_handler(dispatcher: Dispatcher, duck, volume):
     """Cria o callback de comando para o loop STT."""
 
     def on_comando(texto: str) -> None:
@@ -138,13 +160,23 @@ def criar_handler(dispatcher: Dispatcher, duck):
                 return
 
             resposta = dispatcher.processar(comando)
-            # O PairingManager pode ter chamado falar() diretamente (ex: durante o scan)
-            # Nesse caso o Dispatcher retorna string vazia — não há nada a falar aqui.
+            # O PairingManager pode chamar falar() diretamente — dispatcher retorna "" nesses casos
             if resposta:
                 falar(resposta)
         finally:
-            # Restaura o volume sempre, mesmo que ocorra um erro
+            # Restaura o volume original antes de aplicar qualquer mudança pedida
             duck.on_done()
+
+            # Aplica volume pendente APÓS o duck restaurar — evita que o duck sobrescreva
+            pending = dispatcher.consume_pending_volume()
+            if pending is not None:
+                acao, step = pending
+                if acao == "up":
+                    volume.aumentar()
+                elif acao == "down":
+                    volume.diminuir()
+                elif acao == "set":
+                    volume.set_step(step)
 
     return on_comando
 
@@ -152,10 +184,10 @@ def criar_handler(dispatcher: Dispatcher, duck):
 # --- Entry point ---
 
 if __name__ == '__main__':
-    dispatcher, duck = inicializar()
-    handler = criar_handler(dispatcher, duck)
+    dispatcher, duck, volume = inicializar()
+    handler = criar_handler(dispatcher, duck, volume)
 
-    falar("Pronto. Pode falar.")
+    tocar_boot()
     logger.info("Loop STT iniciado. Wake word: '%s'", WAKE_WORD)
 
     try:

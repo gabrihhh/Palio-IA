@@ -43,7 +43,7 @@
 ### Wake Word + Detecção de Comando
 **Descrição**: Após o STT converter fala em texto, verifica se a wake word está presente e aciona o dispatcher.
 
-**Wake word**: `"palio"`
+**Wake word**: `"carro"`
 
 **Normalização**: Usa `verificar_palavra()` que remove acentos e ignora maiúsculas antes de comparar.
 
@@ -80,11 +80,15 @@ verificar_palavra(frase, palavra)  # Busca substring ignorando acentos e case
 
 **Fluxo**:
 ```
+Boot:
+  1. Toca som de boot simples (dois bipes curtos)
+  2. Sistema fica aguardando
+
 Loop contínuo:
   1. STT ouve microfone
-  2. Detecta wake word "palio"
-  3. Extrai o comando após a wake word
-  4. Duck de áudio reduz o volume
+  2. Detecta wake word "carro"
+  3. Duck de áudio reduz volume para 20% imediatamente
+  4. Extrai o comando após a wake word
   5. Dispatcher roteia para música, pareamento ou LLM
   6. TTS fala a resposta
   7. Duck restaura o volume
@@ -116,7 +120,7 @@ Loop contínuo:
 |---|---|
 | "próxima", "passa", "skip" | Próxima faixa |
 | "volta", "anterior" | Faixa anterior |
-| "pausa", "para" | Pausar |
+| "pausa", "para", "pare", "parar" | Pausar |
 | "toca", "play", "continua" | Retomar |
 | "que música é essa" | Info da faixa atual |
 
@@ -125,14 +129,17 @@ Loop contínuo:
 ---
 
 ### Pareamento Bluetooth por Voz
-**Descrição**: Fluxo completo de pareamento de dispositivos Bluetooth controlado por voz, com persistência em `data/devices.json`.
+**Descrição**: Fluxo de pareamento de dispositivo Bluetooth (celular) controlado por voz, com persistência em `data/devices.json`. Apenas 1 dispositivo salvo por vez.
 
 **Componentes Envolvidos**: `modules/bluetooth/pairing.py`
 
 **Modos**:
-- **Manual** (`"modo parear"`): scan ao vivo → usuário escolhe dispositivo → pair + trust + connect + salva
-- **Automático** (`"pareamento automático"`): conecta o último sink e source salvos
-- **Gerenciamento**: listar, remover, reconectar dispositivos salvos
+- **Modo pareamento** (`"carro modo de pareamento"`): Rock Pi fica visível e pareável por 60s → usuário conecta pelo celular (inicia a conexão pelo lado do celular) → Rock Pi detecta a conexão, salva o dispositivo (sobrescreve o anterior) → confirma "Dispositivo conectado e salvo."
+- **Conectar** (`"carro conectar"`): tenta conectar ao dispositivo salvo → "Dispositivo conectado." ou "Não foi possível achar o dispositivo."
+
+**Comportamento no boot**: O sistema NÃO tenta conectar automaticamente ao ligar. Aguarda comando de voz.
+
+**Persistência**: `data/devices.json` — guarda apenas 1 dispositivo (o último pareado).
 
 ---
 
@@ -164,31 +171,6 @@ Loop contínuo:
 
 ## Funcionalidades Planejadas
 
-### Migração de Saída de Áudio: Bluetooth → 3.5mm AUX
-**Descrição**: Trocar a saída de áudio do Rock Pi para o rádio do carro de Bluetooth A2DP para cabo 3.5mm direto na entrada AUX do rádio.
-
-**Motivação**:
-- Elimina o pareamento do rádio — só o celular precisa ser pareado
-- Resolve o problema do primeiro boot (áudio sempre disponível, sem depender de Bluetooth)
-- Conexão mais estável, sem dropout de Bluetooth
-- Menos carga no chip Bluetooth (uma conexão ao invés de duas)
-
-**Arquitetura atual:**
-```
-Celular → Bluetooth A2DP (entrada) → Rock Pi → Bluetooth A2DP (saída) → Rádio
-```
-**Arquitetura alvo:**
-```
-Celular → Bluetooth A2DP (entrada) → Rock Pi → 3.5mm cabo → Rádio AUX
-```
-
-**Impacto no código:**
-- Role `"source"` em `modules/bluetooth/pairing.py` vira obsoleto (só haverá pareamento de entrada/celular)
-- Docs e diagramas de integração precisam ser atualizados
-
-**Pré-requisito físico**: Confirmar se o rádio do Fiat Palio tem entrada AUX 3.5mm.
-
-**Status**: Aguardando confirmação do AUX no rádio.
 
 ---
 
@@ -215,6 +197,20 @@ Celular → Bluetooth A2DP (entrada) → Rock Pi → 3.5mm cabo → Rádio AUX
 
 ---
 
+## Revisão pós-primeiro teste no Rock Pi
+
+**Após o primeiro uso real no carro**, fazer uma rodada de revisão/limpeza cobrindo:
+
+- Ajuste fino do PipeWire (nome real do sink analógico, latência, volume padrão)
+- Validar fluxo completo: boot → pareamento → música → TTS → duck → restaura
+- Revisar tempos de espera no boot (ExecStartPre no systemd)
+- Identificar qualquer comando de voz que o Vosk não esteja reconhecendo bem no ambiente real (ruído de carro, motor)
+- Avaliar se o modelo Vosk small é suficiente ou se vale o modelo grande
+- Checar se o AudioDuck está com o percentual certo (20%) no ambiente real
+- Limpar qualquer workaround ou TODO deixado durante o desenvolvimento inicial
+
+---
+
 ## Evolução do Projeto por Versão
 
 | Versão | Descrição |
@@ -228,3 +224,5 @@ Celular → Bluetooth A2DP (entrada) → Rock Pi → 3.5mm cabo → Rádio AUX
 | v0.0.7 | Voz e reconhecimento configurados |
 | v0.0.8 | Migração para sounddevice (cross-platform), remoção do winsound |
 | v0.0.9 | Bluetooth AVRCP, pareamento por voz, LLM Ollama, AudioDuck, Dispatcher |
+| v0.1.0 | Wake word "carro", arquitetura AUX P2, pareamento por modo descobrível, boot sound, setup.sh |
+| v0.2.0 | Controle de volume por voz (aumenta, diminui, volume 1-10), README.md, PipeWire configurado |

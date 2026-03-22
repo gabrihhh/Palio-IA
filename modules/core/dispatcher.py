@@ -5,7 +5,7 @@ Roteador de intenção (intent dispatcher).
 
 Recebe o texto reconhecido pelo STT (já filtrado pela wake word) e decide:
   1. Modo pareamento ativo? → delega ao PairingManager
-  2. É um comando de pareamento/dispositivos? → ativa PairingManager ou executa ação
+  2. É um comando de pareamento? → ativa PairingManager ou conecta dispositivo salvo
   3. É um comando de música mapeado? → executa via BluetoothMusicController
   4. Nenhum dos anteriores? → envia ao OllamaClient para resposta livre
 
@@ -14,20 +14,13 @@ A saída de qualquer caminho é sempre uma string de texto que será lida pelo T
 Comandos de música reconhecidos (insensíveis a acentos e maiúsculas):
   - "próxima" / "proxima" / "passa" / "passa música" → next_track()
   - "volta" / "voltar" / "anterior" / "volta música"  → previous_track()
-  - "pausa" / "pausar" / "para" / "para música"       → pause()
+  - "pausa" / "pausar" / "para" / "pare" / "parar"   → pause()
   - "toca" / "tocar" / "play" / "continua" / "resume" → play()
   - "que música é essa" / "qual é a música"           → get_track_info()
 
-Comandos de pareamento (manual — scan ao vivo):
-  - "modo parear" / "parear" / "pareamento"           → inicia fluxo de scan + pair
-
-Comandos de pareamento automático (usa os salvos):
-  - "pareamento automático" / "conectar automatico"   → conecta o último sink + source salvos
-
-Comandos de gerenciamento de dispositivos:
-  - "quais dispositivos" / "lista dispositivos"       → lista dispositivos salvos
-  - "remover <nome>" / "desparear <nome>"             → remove dispositivo
-  - "reconectar" / "conectar dispositivos"            → reconecta todos os dispositivos salvos
+Comandos de pareamento:
+  - "modo de pareamento" / "modo pareamento"          → Rock Pi fica visível 60s aguardando celular
+  - "conectar" / "conecta"                            → conecta ao dispositivo salvo
 """
 
 import logging
@@ -78,7 +71,7 @@ def _normalizar(texto: str) -> str:
 _MUSIC_INTENTS: list[tuple[list[str], str]] = [
     (["proxima", "passa", "passa musica", "skip", "pula"], "next"),
     (["volta", "voltar", "anterior", "musica anterior", "volta musica"], "previous"),
-    (["pausa", "pausar", "para musica", "stop"], "pause"),
+    (["pausa", "pausar", "para musica", "stop", "pare", "parar"], "pause"),
     (["toca", "tocar", "play", "continua", "resume", "continuar"], "play"),
     (["que musica e essa", "qual e a musica", "qual musica", "o que ta tocando",
       "nome da musica", "nome da faixa"], "track_info"),
@@ -138,64 +131,26 @@ def _detectar_intencao_musica(texto: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 _PAIRING_TRIGGERS = [
-    "modo parear", "modo pareamento", "parear dispositivo",
-    "pareie", "adicionar dispositivo", "novo dispositivo",
+    "modo de pareamento", "modo pareamento", "parear", "pareamento",
 ]
 
-# Triggers para pareamento automático — verificados ANTES dos triggers manuais
-# para "pareamento automatico" não cair em "pareamento" acima
-_AUTO_PAIRING_TRIGGERS = [
-    "pareamento automatico", "parear automatico", "conectar automatico",
-    "conexao automatica", "conectar os salvos", "conectar salvos",
-]
-
-_DEVICE_LIST_TRIGGERS = [
-    "quais dispositivos", "lista de dispositivos", "dispositivos pareados",
-    "que dispositivos", "meus dispositivos",
-]
-
-_DEVICE_REMOVE_TRIGGERS = [
-    "remover ", "desparear ", "excluir dispositivo ", "deletar dispositivo ",
-]
-
-_RECONNECT_TRIGGERS = [
-    "reconectar", "reconecta", "conectar dispositivos", "reconectar dispositivos",
-    "conecta o bluetooth",
+_CONNECT_TRIGGERS = [
+    "conectar", "conecta",
 ]
 
 
 def _detectar_intencao_pareamento(texto_norm: str) -> str | None:
-    """Retorna a intenção de gerenciamento de dispositivos ou None."""
-    # Automático primeiro (evita match parcial com triggers manuais)
-    for t in _AUTO_PAIRING_TRIGGERS:
-        if t in texto_norm:
-            return "pareamento_automatico"
-
+    """Retorna 'iniciar_pareamento', 'conectar' ou None."""
+    # "modo de pareamento" verificado antes de "conectar" para evitar match parcial
     for t in _PAIRING_TRIGGERS:
         if t in texto_norm:
             return "iniciar_pareamento"
 
-    for t in _DEVICE_LIST_TRIGGERS:
+    for t in _CONNECT_TRIGGERS:
         if t in texto_norm:
-            return "listar"
-
-    for t in _DEVICE_REMOVE_TRIGGERS:
-        if t in texto_norm:
-            return "remover"
-
-    for t in _RECONNECT_TRIGGERS:
-        if t in texto_norm:
-            return "reconectar"
+            return "conectar"
 
     return None
-
-
-def _extrair_nome_remocao(texto_norm: str) -> str:
-    """Extrai o nome do dispositivo a remover do comando de voz."""
-    for trigger in _DEVICE_REMOVE_TRIGGERS:
-        if trigger in texto_norm:
-            return texto_norm.split(trigger, 1)[1].strip()
-    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +175,22 @@ class Dispatcher:
         self._llm = llm
         self._volume = volume
         self._pairing: PairingManager = create_pairing_manager(falar_cb)
+        self._pending_volume: tuple[str, int] | None = None
+
+    def consume_pending_volume(self) -> tuple[str, int] | None:
+        """
+        Retorna e limpa a ação de volume pendente, se houver.
+
+        Deve ser chamado em main.py APÓS duck.on_done() restaurar o volume,
+        para que a mudança de volume não seja sobrescrita pelo duck.
+
+        Retorna tupla (acao, step) onde:
+          acao = "up" | "down" | "set"
+          step = step 1-10 (só relevante para "set")
+        """
+        pending = self._pending_volume
+        self._pending_volume = None
+        return pending
 
     def processar(self, texto: str) -> str:
         """
@@ -243,7 +214,7 @@ class Dispatcher:
         # --- Comandos de gerenciamento de dispositivos ---
         intencao_pair = _detectar_intencao_pareamento(texto_norm)
         if intencao_pair is not None:
-            return self._executar_pareamento(intencao_pair, texto_norm)
+            return self._executar_pareamento(intencao_pair, "")
 
         # --- Comandos de volume ---
         intencao_volume = _detectar_intencao_volume(texto_norm)
@@ -266,26 +237,8 @@ class Dispatcher:
         if intencao == "iniciar_pareamento":
             return self._pairing.iniciar_modo_parear()
 
-        if intencao == "pareamento_automatico":
-            return self._pairing.pareamento_automatico()
-
-        if intencao == "listar":
-            devices = self._pairing.listar_dispositivos()
-            if not devices:
-                return "Não tem nenhum dispositivo pareado ainda."
-            partes = [f"{d.apelido} como {d.role_label()}" for d in devices]
-            if len(partes) == 1:
-                return f"Tenho um dispositivo: {partes[0]}."
-            return "Tenho " + ", ".join(partes[:-1]) + f" e {partes[-1]}."
-
-        if intencao == "remover":
-            nome = _extrair_nome_remocao(texto_norm)
-            if not nome:
-                return "Qual dispositivo você quer remover?"
-            return self._pairing.remover_dispositivo(nome)
-
-        if intencao == "reconectar":
-            return self._pairing.reconectar_todos()
+        if intencao == "conectar":
+            return self._pairing.conectar()
 
         return "Não entendi o comando de dispositivo."
 
@@ -328,28 +281,18 @@ class Dispatcher:
 
     def _executar_volume(self, intencao: tuple[str, int]) -> str:
         if self._volume is None:
-            return "Controle de volume não está disponível."
+            return ""
 
         acao, step = intencao
 
-        if acao == "up":
-            novo = self._volume.aumentar()
-            if novo < 0:
-                return "Não consegui aumentar o volume."
-            return f"Volume no {novo // 10}."
+        if acao in ("up", "down"):
+            # Armazena como pendente — main.py aplica após duck.on_done() restaurar o volume
+            self._pending_volume = intencao
 
-        if acao == "down":
-            novo = self._volume.diminuir()
-            if novo < 0:
-                return "Não consegui diminuir o volume."
-            return f"Volume no {novo // 10}."
-
-        if acao == "set":
+        elif acao == "set":
             if step == -1:
                 return ""
-            ok = self._volume.set_step(step)
-            if not ok:
-                return "Não consegui definir o volume."
-            return f"Volume no {step}."
+            # Armazena como pendente — idem
+            self._pending_volume = intencao
 
-        return "Não entendi o comando de volume."
+        return ""

@@ -11,7 +11,7 @@ from typing import Callable
 logger = logging.getLogger(__name__)
 
 # Wake word padrão — pode ser sobrescrita em iniciar_loop_stt()
-_DEFAULT_WAKE_WORD = "palio"
+_DEFAULT_WAKE_WORD = "carro"
 
 
 def remove_acentos(texto: str) -> str:
@@ -86,7 +86,7 @@ def iniciar_loop_stt(
 
     Args:
         on_comando:  Callback chamado quando a wake word é detectada.
-        wake_word:   Palavra que ativa o assistente (padrão: "palio").
+        wake_word:   Palavra que ativa o assistente (padrão: "carro").
         model_path:  Caminho para o modelo Vosk PT-BR.
     """
     TARGET_RATE = 16000

@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Palio-IA — Configuração de Áudio Bluetooth (PipeWire)
+# Palio-IA — Configuração de Áudio (PipeWire + Bluetooth A2DP sink + P2)
 # =============================================================================
-# Configura o PipeWire para:
-#   - Receber áudio do celular via A2DP (sink)
-#   - Enviar áudio para o rádio do carro via A2DP (source)
-#   - Misturar o áudio do celular com o TTS do Palio
 #
-# Topologia de áudio:
+# O que este script faz:
+#   1. Configura o WirePlumber para aceitar conexão A2DP do celular (Rock Pi = sink)
+#   2. Define a saída analógica (P2/3.5mm) como default sink do sistema
+#   3. O PipeWire roteia automaticamente o áudio do celular para o P2
+#   4. O TTS do Palio também sai pelo P2 (usa o default sink)
 #
-#   [Celular] --A2DP source--> [PipeWire sink    ]
-#                              [PipeWire loopback ] --> [A2DP source] --> [Rádio]
-#   [Palio TTS]  ------------> [PipeWire mixer   ]
+# Arquitetura de áudio resultante:
 #
-# Este script é chamado automaticamente pelo setup.sh.
-# Pode ser re-executado a qualquer momento para reconfigurar.
+#   [Celular] ──BT A2DP──► [Rock Pi / PipeWire] ──P2 cabo──► [Rádio AUX]
+#                                    │
+#                          TTS misturado aqui
 #
 # Uso:
 #   bash scripts/bluetooth_config.sh
@@ -33,229 +32,133 @@ warn()    { echo -e "${YELLOW}[AVISO]${NC} $*"; }
 error()   { echo -e "${RED}[ERRO]${NC} $*"; exit 1; }
 section() { echo -e "\n${BLUE}=== $* ===${NC}"; }
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEVICES_FILE="$PROJECT_DIR/.bluetooth_devices"
+# Para root, define o diretório de runtime correto do PipeWire
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
 
 # =============================================================================
 # 1. Verificar dependências
 # =============================================================================
 section "Verificando dependências de áudio"
 
-for cmd in pactl pw-cli wpctl; do
+for cmd in pactl wpctl bluetoothctl; do
     if ! command -v "$cmd" &>/dev/null; then
-        error "$cmd não encontrado. Execute: sudo apt install pipewire pipewire-pulse wireplumber"
+        error "$cmd não encontrado. Execute setup.sh primeiro."
     fi
 done
-log "PipeWire, pactl e WirePlumber presentes."
+log "Dependências OK."
 
 # =============================================================================
-# 2. Configurar PipeWire para suportar Bluetooth A2DP sink + source
+# 2. Habilitar PipeWire como serviço de usuário (para root em headless)
 # =============================================================================
-section "Configurando PipeWire para Bluetooth"
+section "Habilitando serviços PipeWire"
 
-PIPEWIRE_CONF_DIR="$HOME/.config/pipewire/pipewire.conf.d"
-mkdir -p "$PIPEWIRE_CONF_DIR"
+# Garante que o diretório de runtime existe
+mkdir -p "$XDG_RUNTIME_DIR"
 
-# Habilita suporte a Bluetooth no PipeWire
-cat > "$PIPEWIRE_CONF_DIR/10-bluetooth.conf" << 'EOF'
-# Palio-IA: habilita Bluetooth A2DP sink + source simultâneo
-context.properties = {
-    default.clock.rate          = 48000
-    default.clock.quantum       = 1024
-    default.clock.min-quantum   = 32
-    default.clock.max-quantum   = 8192
-}
+# Habilita linger para que os serviços de usuário iniciem sem login interativo
+loginctl enable-linger root 2>/dev/null || true
 
-context.modules = [
-    {   name = libpipewire-module-bluetooth-autoconnect
-        args = {}
-    }
-]
-EOF
+# Habilita e inicia os serviços PipeWire do usuário
+systemctl --user enable pipewire pipewire-pulse wireplumber 2>/dev/null || true
+systemctl --user start  pipewire pipewire-pulse wireplumber 2>/dev/null || \
+    warn "PipeWire não iniciou agora — será iniciado no próximo boot."
 
-log "Configuração base do PipeWire criada."
+sleep 2
+log "Serviços PipeWire habilitados."
 
 # =============================================================================
-# 3. Configurar WirePlumber para gerenciar os perfis Bluetooth
+# 3. Configurar WirePlumber — Bluetooth somente A2DP sink (recebe do celular)
 # =============================================================================
+section "Configurando WirePlumber para Bluetooth A2DP sink"
 
-WIREPLUMBER_CONF_DIR="$HOME/.config/wireplumber/wireplumber.conf.d"
-mkdir -p "$WIREPLUMBER_CONF_DIR"
+WP_BT_DIR="$HOME/.config/wireplumber/bluetooth.lua.d"
+mkdir -p "$WP_BT_DIR"
 
-# Configuração para aceitar conexão A2DP do celular como sink
-# e conectar ao rádio como source
-cat > "$WIREPLUMBER_CONF_DIR/51-palio-bluetooth.conf" << 'EOF'
-# Palio-IA: política de Bluetooth para sink (celular) + source (rádio)
-monitor.bluez.properties = {
-    # Habilita todos os perfis de áudio
-    bluez5.enable-sbc-xq     = true
-    bluez5.enable-msbc        = true
-    bluez5.enable-hw-volume   = true
-
-    # Aceita conexões A2DP de entrada (celular)
-    bluez5.a2dp.aac.bitratemode = 0
-
-    # Roles: o Rock Pi age como sink E source
-    bluez5.roles = [
-        a2dp_sink
-        a2dp_source
-        hsp_hs
-        hfp_hf
-    ]
+cat > "$WP_BT_DIR/50-palio-bt.lua" << 'EOF'
+-- Palio-IA: Rock Pi age apenas como A2DP sink (recebe áudio do celular).
+-- O rádio do carro é conectado via cabo P2 — não precisa de A2DP source.
+bluez_monitor.properties = {
+  -- Apenas sink: recebe áudio do celular
+  ["bluez5.roles"]           = "[ a2dp_sink hsp_hs hfp_hf ]",
+  ["bluez5.codecs"]          = "[ sbc sbc_xq aac ]",
+  ["bluez5.enable-sbc-xq"]  = true,
+  ["bluez5.enable-msbc"]     = true,
+  ["bluez5.enable-hw-volume"] = true,
+  -- Auto-aceita perfil A2DP sink ao conectar
+  ["bluez5.auto-connect"]    = "[ a2dp_sink ]",
 }
 EOF
 
-log "Configuração do WirePlumber criada."
+log "WirePlumber configurado para A2DP sink."
 
 # =============================================================================
-# 4. Criar loopback virtual: celular → rádio
+# 4. Detectar saída analógica (P2) e definir como default sink
 # =============================================================================
-section "Configurando loopback de áudio (celular → rádio)"
+section "Definindo saída analógica (P2) como default sink"
 
-# Configuração do módulo de loopback no PipeWire
-# Isso cria um "tubo" do sink (celular) para o source (rádio)
-# O TTS do Palio usa o mesmo sink padrão do sistema, então é misturado automaticamente
-cat > "$PIPEWIRE_CONF_DIR/20-loopback.conf" << 'EOF'
-# Palio-IA: loopback — mistura áudio do celular + TTS e envia ao rádio
-context.modules = [
-    {   name = libpipewire-module-loopback
-        args = {
-            # Nome do nó de loopback
-            node.name = "palio-loopback"
-            node.description = "Palio Audio Loopback"
+# Aguarda PipeWire inicializar os dispositivos
+sleep 3
 
-            # Latência (em samples @ 48kHz — 2048 = ~43ms)
-            capture.props = {
-                node.name = "palio-loopback-capture"
-                audio.position = [ FL FR ]
-                stream.dont-remix = true
-                node.passive = true
-            }
-            playback.props = {
-                node.name = "palio-loopback-playback"
-                audio.position = [ FL FR ]
-                node.passive = true
-            }
-        }
-    }
-]
+# Pega o primeiro sink que NÃO seja Bluetooth
+ANALOG_SINK=$(pactl list sinks short 2>/dev/null \
+    | grep -v -i "bluez\|bluetooth" \
+    | awk 'NR==1 {print $2}' || true)
+
+if [[ -z "$ANALOG_SINK" ]]; then
+    warn "Nenhuma saída analógica detectada ainda. Defina manualmente após o boot:"
+    warn "  pactl set-default-sink <nome-do-sink>"
+    warn "  Para listar os sinks disponíveis: pactl list sinks short"
+else
+    pactl set-default-sink "$ANALOG_SINK" 2>/dev/null || true
+    log "Default sink definido: $ANALOG_SINK"
+
+    # Persiste a configuração no WirePlumber
+    WP_MAIN_DIR="$HOME/.config/wireplumber/main.lua.d"
+    mkdir -p "$WP_MAIN_DIR"
+
+    cat > "$WP_MAIN_DIR/50-palio-defaults.lua" << EOF
+-- Palio-IA: mantém a saída analógica (P2) como default sink.
+-- Garante que o áudio do celular (BT) e o TTS saem pelo P2, não por BT.
+default_policy.default_node.roles = {
+    ["Audio/Sink"] = "$ANALOG_SINK",
+}
 EOF
-
-log "Loopback configurado."
-
-# =============================================================================
-# 5. Script de reconexão automática
-# =============================================================================
-section "Criando script de reconexão automática"
-
-RECONNECT_SCRIPT="$PROJECT_DIR/scripts/bt_reconnect.sh"
-
-cat > "$RECONNECT_SCRIPT" << 'RECONNECT_EOF'
-#!/usr/bin/env bash
-# Reconecta automaticamente os dispositivos Bluetooth do Palio-IA.
-# Chamado pelo systemd após o boot.
-
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEVICES_FILE="$PROJECT_DIR/.bluetooth_devices"
-
-log() { echo "[BT-RECONNECT] $*"; }
-
-if [[ ! -f "$DEVICES_FILE" ]]; then
-    log "Nenhum dispositivo configurado em $DEVICES_FILE."
-    exit 0
+    log "Default sink persistido no WirePlumber."
 fi
 
-# Aguarda o Bluetooth estar pronto
-sleep 5
-bluetoothctl power on
-
-while IFS= read -r line; do
-    [[ -z "$line" || "$line" =~ ^# ]] && continue
-    MAC=$(echo "$line" | cut -d= -f2 | awk '{print $1}')
-    TIPO=$(echo "$line" | cut -d= -f1)
-
-    log "Tentando reconectar $TIPO: $MAC"
-
-    if bluetoothctl connect "$MAC" 2>/dev/null; then
-        log "$TIPO ($MAC) reconectado."
-
-        # Configura o perfil A2DP correto para cada dispositivo
-        sleep 2
-        CARD=$(pactl list cards short 2>/dev/null | grep "${MAC//:/_}" | awk '{print $1}' || true)
-        if [[ -n "$CARD" ]]; then
-            if [[ "$TIPO" == "phone" ]]; then
-                # Celular: perfil A2DP sink (Rock Pi recebe áudio)
-                pactl set-card-profile "$CARD" a2dp-sink 2>/dev/null || \
-                pactl set-card-profile "$CARD" a2dp_sink 2>/dev/null || true
-                log "Perfil A2DP sink aplicado ao celular."
-            elif [[ "$TIPO" == "car" ]]; then
-                # Rádio: perfil A2DP source (Rock Pi envia áudio)
-                pactl set-card-profile "$CARD" a2dp-source 2>/dev/null || \
-                pactl set-card-profile "$CARD" a2dp_source 2>/dev/null || true
-                log "Perfil A2DP source aplicado ao rádio."
-            fi
-        fi
-    else
-        log "Não foi possível reconectar $TIPO ($MAC) agora — tentará novamente."
-    fi
-done < "$DEVICES_FILE"
-RECONNECT_EOF
-
-chmod +x "$RECONNECT_SCRIPT"
-log "Script de reconexão criado: $RECONNECT_SCRIPT"
-
 # =============================================================================
-# 6. Serviço systemd para reconexão no boot
-# =============================================================================
-section "Configurando reconexão automática no boot"
-
-RECONNECT_SERVICE="/etc/systemd/system/palio-bt-reconnect.service"
-
-sudo tee "$RECONNECT_SERVICE" > /dev/null << EOF
-[Unit]
-Description=Palio-IA Bluetooth Reconnect
-After=bluetooth.target pipewire.service
-Wants=bluetooth.target
-
-[Service]
-Type=oneshot
-User=$USER
-ExecStart=$RECONNECT_SCRIPT
-RemainAfterExit=yes
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable palio-bt-reconnect.service
-log "Serviço de reconexão habilitado."
-
-# =============================================================================
-# 7. Reiniciar PipeWire para aplicar configurações
+# 5. Reiniciar WirePlumber para aplicar configurações
 # =============================================================================
 section "Aplicando configurações"
 
-systemctl --user daemon-reload
-systemctl --user restart pipewire pipewire-pulse wireplumber 2>/dev/null || \
-    warn "PipeWire não está rodando como serviço de usuário — as configurações serão aplicadas no próximo login."
+systemctl --user restart wireplumber 2>/dev/null || \
+    warn "Não foi possível reiniciar WirePlumber agora — será aplicado no boot."
+
+sleep 2
 
 # =============================================================================
-# Resumo
+# 6. Verificação final
 # =============================================================================
-section "Configuração de áudio concluída"
+section "Verificação"
 
 echo ""
-echo "  Fluxo de áudio configurado:"
+log "Sinks disponíveis:"
+pactl list sinks short 2>/dev/null || warn "PipeWire não acessível agora."
+
 echo ""
-echo -e "  ${GREEN}[Celular]${NC} ──A2DP sink──> [Rock Pi] ──loopback──> [Rock Pi] ──A2DP source──> ${GREEN}[Rádio]${NC}"
-echo -e "  ${GREEN}[TTS Palio]${NC} ─────────────────────────────────────────────────────────────^"
+DEFAULT_SINK=$(pactl get-default-sink 2>/dev/null || echo "desconhecido")
+log "Default sink atual: $DEFAULT_SINK"
+
 echo ""
-echo "  - O celular se conecta ao Rock Pi e envia o áudio da música"
-echo "  - O Rock Pi mistura esse áudio com a voz do Palio (TTS)"
-echo "  - O áudio combinado é enviado ao rádio do carro via Bluetooth"
+echo -e "${GREEN}Configuração de áudio concluída.${NC}"
 echo ""
-log "Para testar: conecte o celular e o rádio e verifique com: pactl list sinks short"
+echo "  Fluxo resultante:"
+echo ""
+echo -e "  ${GREEN}[Celular]${NC} ──BT A2DP──► [Rock Pi / PipeWire] ──cabo P2──► ${GREEN}[Rádio AUX]${NC}"
+echo -e "                                       │"
+echo -e "                             TTS Palio misturado aqui"
+echo ""
+echo "  Para verificar o roteamento após conectar o celular:"
+echo -e "  ${BLUE}pw-cli list-objects | grep -A5 bluez${NC}"
 echo ""

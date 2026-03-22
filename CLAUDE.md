@@ -16,7 +16,26 @@ Antes de qualquer tarefa, leia os arquivos em `ai_docs/` para entender o projeto
 
 - Assistente de voz embarcado para um Fiat Palio, rodando em **Rock Pi 4B** (ARM64)
 - Processamento 100% offline: Vosk (STT), pyttsx3/espeak-ng (TTS), Ollama (LLM)
-- Wake word: **"palio"** ou **"carro"**
+- Wake word: **"carro"**
 - Áudio obrigatório: **16kHz mono** (Vosk)
 - Idioma: **português brasileiro**
 - Entry point principal: `main.py`
+
+## Regra obrigatória: manter o README.md atualizado
+
+**Sempre que implementar, modificar ou remover qualquer uma das seguintes coisas, atualize o `README.md` na raiz do projeto:**
+
+- Novas funcionalidades ou comandos de voz
+- Alterações em funcionalidades existentes
+- Adição ou remoção de bibliotecas/dependências
+- Mudanças na stack (Python, Ollama, Vosk, PipeWire, Bluetooth, etc.)
+- Mudanças na arquitetura de áudio ou hardware
+- Novos módulos ou arquivos relevantes
+- Mudanças no setup ou instalação
+
+O README.md deve sempre refletir o estado atual do projeto e conter:
+- O que é o projeto e como funciona
+- Stack completa de tecnologias
+- Comandos de voz disponíveis
+- Como instalar e rodar
+- Requisitos de hardware e software

@@ -1,13 +1,12 @@
 # palio-ia.service
 #
-# Este arquivo é gerado automaticamente pelo setup.sh com os caminhos corretos.
-# Está aqui apenas como referência.
+# Arquivo de referência — gerado automaticamente pelo setup.sh com os caminhos corretos.
 #
 # Para instalar manualmente:
-#   sudo cp palio-ia.service /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable palio-ia.service
-#   sudo systemctl start palio-ia.service
+#   cp palio-ia.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable palio-ia.service
+#   systemctl start palio-ia.service
 
 [Unit]
 Description=Palio-IA Voice Assistant
@@ -16,15 +15,17 @@ Wants=bluetooth.target
 
 [Service]
 Type=simple
-User=radxa
-WorkingDirectory=/home/radxa/Palio-IA
-ExecStartPre=/bin/sleep 5
-ExecStart=/home/radxa/Palio-IA/venv/bin/python main.py
+User=root
+WorkingDirectory=/root/Palio-IA
+ExecStartPre=/bin/sleep 8
+ExecStart=/root/Palio-IA/venv/bin/python main.py
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
 Environment="PYTHONUNBUFFERED=1"
+Environment="XDG_RUNTIME_DIR=/run/user/0"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/0/bus"
 
 [Install]
 WantedBy=multi-user.target
