@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import numpy as np
-from scipy.signal import resample
+from scipy.signal import resample_poly
 import unicodedata
 from typing import Callable
 
@@ -30,10 +30,14 @@ def verificar_palavra(frase: str, palavra: str) -> bool:
 
 
 def resample_audio(audio_data: np.ndarray, original_rate: int, target_rate: int) -> np.ndarray:
-    """Reamostra o áudio para a taxa desejada."""
+    """Reamostra o áudio para a taxa desejada, mantendo dtype int16."""
     if original_rate != target_rate:
-        num_samples = int(len(audio_data) * target_rate / original_rate)
-        return np.asarray(resample(audio_data, num_samples))
+        from math import gcd
+        g = gcd(original_rate, target_rate)
+        up = target_rate // g
+        down = original_rate // g
+        resampled = resample_poly(audio_data, up, down)
+        return np.clip(resampled, -32768, 32767).astype(np.int16)
     return audio_data
 
 
@@ -42,13 +46,35 @@ def carregar_modelo(model_path: str) -> vosk.Model:
     if not os.path.exists(model_path):
         logger.error("Modelo Vosk não encontrado em '%s'.", model_path)
         raise SystemExit(1)
-    model = vosk.Model(model_path, {"beam": 15, "max-active": 10000})
+    model = vosk.Model(model_path)
     logger.info("Modelo Vosk carregado com sucesso.")
     return model
 
 
 def get_best_microphone(p: pyaudio.PyAudio, target_rate: int) -> tuple[int, int]:
-    """Encontra o microfone com a taxa de amostragem mais próxima do target_rate."""
+    """Encontra o microfone com a taxa de amostragem mais próxima do target_rate.
+
+    Se a variável de ambiente AUDIO_DEVICE estiver definida, usa o índice especificado.
+    """
+    env_device = os.environ.get("AUDIO_DEVICE")
+    if env_device is not None:
+        try:
+            device_index = int(env_device)
+            device_info = p.get_device_info_by_index(device_index)
+            if int(device_info['maxInputChannels']) == 0:
+                logger.error("Dispositivo %d (%s) não tem canais de entrada.", device_index, device_info['name'])
+                raise SystemExit(1)
+            logger.info(
+                "Microfone selecionado via AUDIO_DEVICE=%d: %s (%d Hz)",
+                device_index,
+                device_info['name'],
+                int(device_info['defaultSampleRate']),
+            )
+            return device_index, int(device_info['defaultSampleRate'])
+        except (ValueError, OSError) as e:
+            logger.error("AUDIO_DEVICE inválido: %s", e)
+            raise SystemExit(1)
+
     best_device_index = None
 
     for i in range(p.get_device_count()):
@@ -77,6 +103,7 @@ def iniciar_loop_stt(
     on_comando: Callable[[str], None],
     wake_word: str = _DEFAULT_WAKE_WORD,
     model_path: str = "model-ptbr",
+    debug: bool = False,
 ) -> None:
     """
     Inicia o loop de captura de áudio e reconhecimento de fala.
@@ -88,9 +115,11 @@ def iniciar_loop_stt(
         on_comando:  Callback chamado quando a wake word é detectada.
         wake_word:   Palavra que ativa o assistente (padrão: "carro").
         model_path:  Caminho para o modelo Vosk PT-BR.
+        debug:       Se True, imprime tudo que o Vosk reconhece em tempo real.
     """
     TARGET_RATE = 16000
     CHUNK = 4096
+    PREFERRED_RATE = 48000  # ratio 3:1 com 16kHz — resampling limpo
 
     model = carregar_modelo(model_path)
     p = pyaudio.PyAudio()
@@ -98,10 +127,22 @@ def iniciar_loop_stt(
     try:
         device_index, device_rate = get_best_microphone(p, TARGET_RATE)
 
+        # Tenta capturar a 48kHz (ratio 3:1 com 16kHz) para resampling mais limpo
+        capture_rate = device_rate
+        try:
+            p.is_format_supported(
+                PREFERRED_RATE, input_device=device_index,
+                input_channels=1, input_format=pyaudio.paInt16
+            )
+            capture_rate = PREFERRED_RATE
+            logger.info("Capturando a %dHz (ratio limpo 3:1 com 16kHz).", capture_rate)
+        except Exception:
+            logger.info("Capturando a %dHz (taxa padrão do dispositivo).", capture_rate)
+
         stream = p.open(
             format=pyaudio.paInt16,
             channels=1,
-            rate=device_rate,
+            rate=capture_rate,
             input=True,
             input_device_index=device_index,
             frames_per_buffer=CHUNK,
@@ -120,8 +161,8 @@ def iniciar_loop_stt(
             if len(data) == 0:
                 continue
 
-            audio_data = np.frombuffer(data, dtype=np.int16)
-            audio_data = resample_audio(audio_data, device_rate, TARGET_RATE)
+            raw = np.frombuffer(data, dtype=np.int16)
+            audio_data = resample_audio(raw, capture_rate, TARGET_RATE)
 
             if recognizer.AcceptWaveform(audio_data.tobytes()):
                 result = json.loads(recognizer.Result())
@@ -130,11 +171,19 @@ def iniciar_loop_stt(
                 if not recognized_text:
                     continue
 
-                logger.debug("STT reconheceu: '%s'", recognized_text)
+                if debug:
+                    print(f"[STT] {recognized_text}", flush=True)
+                else:
+                    logger.debug("STT reconheceu: '%s'", recognized_text)
 
                 if verificar_palavra(recognized_text, wake_word):
                     logger.info("Wake word detectada: '%s'", recognized_text)
                     on_comando(recognized_text)
+            elif debug:
+                partial = json.loads(recognizer.PartialResult()).get('partial', '')
+                vol = int(np.abs(raw).mean())
+                if partial:
+                    print(f"[VOL:{vol:4d}] {partial}", flush=True)
     finally:
         stream.stop_stream()
         stream.close()

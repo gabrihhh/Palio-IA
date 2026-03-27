@@ -184,6 +184,12 @@ def criar_handler(dispatcher: Dispatcher, duck, volume):
 # --- Entry point ---
 
 if __name__ == '__main__':
+    debug_mode = '--debug' in sys.argv
+
+    if debug_mode:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.info("Modo debug ativado — exibindo tudo que o Vosk reconhece.")
+
     dispatcher, duck, volume = inicializar()
     handler = criar_handler(dispatcher, duck, volume)
 
@@ -191,7 +197,7 @@ if __name__ == '__main__':
     logger.info("Loop STT iniciado. Wake word: '%s'", WAKE_WORD)
 
     try:
-        iniciar_loop_stt(on_comando=handler, wake_word=WAKE_WORD)
+        iniciar_loop_stt(on_comando=handler, wake_word=WAKE_WORD, debug=debug_mode)
     except KeyboardInterrupt:
         logger.info("Encerrando Palio-IA.")
         sys.exit(0)
