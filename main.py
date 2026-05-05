@@ -6,7 +6,7 @@ Orquestrador principal do assistente de voz Palio.
 Fluxo:
   1. Inicializa todos os módulos (STT, TTS, Bluetooth, LLM)
   2. Inicia o loop de escuta STT
-  3. Ao detectar wake word "palio", extrai o restante do texto
+  3. Ao detectar wake word "carro", extrai o restante do texto
   4. Passa o texto ao Dispatcher (comando de música ou conversa LLM)
   5. Lê a resposta via TTS
 

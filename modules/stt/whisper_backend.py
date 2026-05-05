@@ -53,6 +53,7 @@ def iniciar_loop_stt(
     on_timeout_cb: Optional[Callable[[], None]] = None,
     wake_word: str = "carro",
     debug: bool = False,
+    bypass_wake_word: bool = False,
 ) -> None:
     """
     Inicia o loop STT usando faster-whisper com VAD por energia e dois estágios.
@@ -163,7 +164,14 @@ def iniciar_loop_stt(
                         text = " ".join(s.text for s in segments).strip()
 
                         if text:
-                            if stage == 1:
+                            if bypass_wake_word:
+                                if debug:
+                                    print(f"[STT] {text}", flush=True)
+                                else:
+                                    logger.debug("Whisper reconheceu: '%s'", text)
+                                on_comando(text)
+
+                            elif stage == 1:
                                 if debug:
                                     print(f"[STT] {text}", flush=True)
                                 else:

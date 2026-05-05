@@ -98,6 +98,18 @@ Usar skill `using-git-worktrees` antes de qualquer trabalho de feature isolado.
 
 E atualizar `README.md` para qualquer mudança visível ao usuário final (features, stack, setup).
 
+## Scripts de Teste (desenvolvimento)
+
+Ferramentas para testar componentes isoladamente sem rodar o sistema completo. Invocados da raiz do projeto.
+
+| Script | Comando | O que testa |
+|---|---|---|
+| `test/stt.py` | `python test/stt.py` | Transcrição contínua em tempo real — sem wake word. Útil para calibrar `WHISPER_SILENCE_THRESHOLD` e verificar precisão PT-BR |
+| `test/tts.py` | `python test/tts.py arquivo.txt` ou `python test/tts.py "texto"` | Carrega piper e fala o texto. Útil para validar qualidade de voz e latência |
+| `test/chat.py` | `python test/chat.py` | Conversa direta STT → Ollama → TTS sem wake word. Útil para testar o ciclo completo e a persona |
+
+Todos respeitam as mesmas env vars do sistema (`PIPER_MODEL`, `WHISPER_MODEL`, etc.). Não fazem parte do sistema embarcado — são ferramentas de desenvolvimento.
+
 ## Quando Ler Cada Doc
 
 | Tarefa | Leia |
