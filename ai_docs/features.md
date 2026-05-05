@@ -19,7 +19,7 @@
 - `PyAudio` — captura do microfone
 - `scipy.signal.resample_poly` — resampling para 16kHz (ratio limpo 3:1 a 48kHz)
 
-**Arquitetura dois estágios (ambos os backends)**:
+**Arquitetura dois estágios**:
 - **Estágio 1** — sempre ouvindo, procura apenas a wake word
 - **Estágio 2** — após wake word, captura o próximo utterance como comando; timeout 5s
 - `DUCK_WAIT = 0.4s` entre wake word e início do estágio 2
@@ -56,7 +56,7 @@
 ---
 
 ### Resampling de Áudio
-**Descrição**: Converte áudio capturado na taxa nativa do microfone para 16kHz (taxa exigida pelo Vosk e Whisper).
+**Descrição**: Converte áudio capturado na taxa nativa do microfone para 16kHz (taxa exigida pelo Whisper).
 
 **Componentes Envolvidos**: `speech_to_text.py` — função `resample_audio()`
 
@@ -308,8 +308,7 @@ Loop contínuo:
 - Ajuste fino do PipeWire (nome real do sink analógico, latência, volume padrão)
 - Validar fluxo completo: boot → pareamento → música → TTS → duck → restaura
 - Revisar tempos de espera no boot (ExecStartPre no systemd)
-- Identificar qualquer comando de voz que o Vosk não esteja reconhecendo bem no ambiente real (ruído de carro, motor)
-- Avaliar se o modelo Vosk small é suficiente ou se vale o modelo grande
+- Identificar qualquer comando de voz que o Whisper não esteja reconhecendo bem no ambiente real (ruído de carro, motor)
 - Checar se o AudioDuck está com o percentual certo (20%) no ambiente real
 - Limpar qualquer workaround ou TODO deixado durante o desenvolvimento inicial
 
