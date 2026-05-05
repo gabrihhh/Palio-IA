@@ -84,14 +84,15 @@ AUDIO_DEVICE=2 venv/bin/python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(
 ### Síntese de Voz Offline (TTS)
 **Descrição**: Converte texto em fala usando `pyttsx3` offline, salva em arquivo WAV temporário e reproduz via `sounddevice`.
 
-**Componentes Envolvidos**: `main.py` — função `falar()`
+**Componentes Envolvidos**: `main.py` — funções `falar()` e `_limpar_markdown()`
 
 **Fluxo**:
-1. Inicializa engine pyttsx3
-2. Configura taxa: 160 palavras/minuto, volume: 1.0
-3. Salva texto como `output.wav` via `engine.save_to_file()`
-4. Reproduz com `sounddevice` + `soundfile`
-5. Remove `output.wav` após reprodução
+1. Resposta do dispatcher passa por `_limpar_markdown()` (`main.py`) — remove `**bold**`, `_itálico_`, `` `código` ``, `# títulos`, `- bullets`, `> blockquotes`
+2. Inicializa engine pyttsx3
+3. Configura taxa: 160 palavras/minuto, volume: 1.0
+4. Salva texto como `output.wav` via `engine.save_to_file()`
+5. Reproduz com `sounddevice` + `soundfile`
+6. Remove `output.wav` após reprodução
 
 ---
 
@@ -220,20 +221,6 @@ Loop contínuo:
 ---
 
 ## Funcionalidades Planejadas
-
-### [BROKEN] `bt_reconnect.sh` ausente
-**Problema**: `audio.py:reconnect_devices()` referencia `scripts/bt_reconnect.sh` que não existe no repositório. O método nunca é chamado hoje, mas falha se chamado.
-
-**O que fazer**: criar `scripts/bt_reconnect.sh` (script bash que reconecta o dispositivo salvo em `data/devices.json` via `bluetoothctl connect <MAC>`) ou deletar o método `reconnect_devices()` de `audio.py` se não for necessário.
-
----
-
-### [PEQUENO] Limpeza de markdown na resposta do LLM antes do TTS
-**Problema**: o Ollama pode retornar `**negrito**`, `- bullets`, backticks e outros marcadores markdown que o espeak-ng lê literalmente ("asterisco asterisco negrito asterisco asterisco").
-
-**O que fazer**: adicionar uma função `_limpar_para_tts(texto: str) -> str` que remove formatação markdown antes de passar a resposta para `falar()`. Pode ser inserida em `main.py` no `on_comando()` ou em `modules/llm/client.py` no retorno do `chat()`.
-
----
 
 ### [PEQUENO] Comando de voz para resetar histórico da conversa
 **Problema**: `OllamaClient.reset_history()` existe (`client.py:122`) mas não há nenhum comando de voz conectado a ele. O usuário não consegue limpar o contexto da conversa sem reiniciar o sistema.
