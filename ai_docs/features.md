@@ -76,17 +76,24 @@
 ---
 
 ### Síntese de Voz Offline (TTS)
-**Descrição**: Converte texto em fala usando `pyttsx3` offline, salva em arquivo WAV temporário e reproduz via `sounddevice`.
+**Descrição**: Converte texto em fala usando `piper-tts` (modelo ONNX neural PT-BR), gera WAV temporário e reproduz via `sounddevice`.
 
-**Componentes Envolvidos**: `main.py` — funções `falar()` e `_limpar_markdown()`
+**Componentes Envolvidos**: `main.py` — closure `falar()` dentro de `inicializar()`, `_limpar_markdown()`
+
+**Modelo**: `pt_BR-faber-medium` (~63 MB ONNX), carregado uma vez no boot via `PiperVoice.load(PIPER_MODEL)`.
 
 **Fluxo**:
 1. Resposta do dispatcher passa por `_limpar_markdown()` (`main.py`) — remove `**bold**`, `_itálico_`, `` `código` ``, `# títulos`, `- bullets`, `> blockquotes`
-2. Inicializa engine pyttsx3
-3. Configura taxa: 160 palavras/minuto, volume: 1.0
-4. Salva texto como `output.wav` via `engine.save_to_file()`
-5. Reproduz com `sounddevice` + `soundfile`
-6. Remove `output.wav` após reprodução
+2. `voice.synthesize_wav()` gera WAV em arquivo temporário único (`/tmp/palio_tts_XXXXXX.wav`)
+3. Reproduz com `sounddevice` + `soundfile`
+4. Remove arquivo temporário após reprodução
+
+**Configuração**: `PIPER_MODEL` env var — override do caminho do modelo (padrão: `models/pt_BR-faber-medium.onnx` relativo ao `main.py`)
+
+**Instalação offline** (pendrive → Rock Pi):
+- Wheel ARM64: `piper_tts-1.4.2-*-aarch64*.whl` (GitHub Releases `OHF-Voice/piper1-gpl`)
+- `onnxruntime` wheel ARM64 (via `pip download --platform manylinux_2_17_aarch64`)
+- Modelo: `pt_BR-faber-medium.onnx` + `.onnx.json` (Hugging Face `rhasspy/piper-voices`)
 
 ---
 
@@ -275,33 +282,6 @@ Loop contínuo:
 **Detalhe de implementação**: o volume é aplicado **após** `duck.on_done()` para não ser sobrescrito pela restauração do AudioDuck. O dispatcher armazena como `pending_volume` e o `main.py` consome depois do duck (`main.py:181-189`).
 
 **Requisito**: Linux + PipeWire + `pactl`
-
----
-
----
-
-### Síntese de Voz Neural (TTS com piper-tts)
-**Descrição**: Substituição completa de `pyttsx3+espeak-ng` por `piper-tts` (OHF-Voice/piper1-gpl), usando modelo ONNX neural PT-BR para voz natural.
-
-**Componentes Envolvidos**: `main.py` — closure `falar()` dentro de `inicializar()`
-
-**Modelo**: `pt_BR-faber-medium` (~63 MB ONNX), carregado uma vez no boot via `PiperVoice.load()`
-
-**Fluxo**:
-1. `PiperVoice.load(PIPER_MODEL)` no boot — modelo fica em memória durante toda a sessão
-2. A cada chamada `falar(texto)`: `voice.synthesize_wav()` gera WAV em arquivo temporário único (`/tmp/palio_tts_XXXXXX.wav`)
-3. Reprodução via `sounddevice` + `soundfile` — idêntico ao anterior
-4. Arquivo temporário removido após reprodução
-
-**Configuração**:
-- `PIPER_MODEL` env var — override do caminho do modelo (padrão: `models/pt_BR-faber-medium.onnx` relativo ao `main.py`)
-
-**Instalação offline** (pendrive → Rock Pi):
-- Wheel ARM64: `piper_tts-1.4.2-*-aarch64*.whl` (GitHub Releases `OHF-Voice/piper1-gpl`)
-- `onnxruntime` wheel ARM64 (via `pip download --platform manylinux_2_17_aarch64`)
-- Modelo: `pt_BR-faber-medium.onnx` + `.onnx.json` (Hugging Face `rhasspy/piper-voices`)
-
-**Decisão arquitetural**: `falar()` é closure dentro de `inicializar()` — captura `voice` sem alterar a assinatura `Callable[[str], None]` usada como callback no `PairingManager` e `Dispatcher`.
 
 ---
 

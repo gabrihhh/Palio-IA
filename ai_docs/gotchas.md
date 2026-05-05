@@ -38,14 +38,6 @@ Em hardware lento (Rock Pi 4B), o início de uma frase — incluindo a wake word
 
 ## Comportamentos Contra-Intuitivos
 
-### `engine.runAndWait()` é quem realmente gera o arquivo WAV
-`save_to_file()` apenas enfileira a operação. `runAndWait()` processa a fila e **gera** o arquivo.
-O arquivo só existe após `runAndWait()` retornar. Não tentar reproduzir `output.wav` antes disso.
-
-**Localização**: `main.py`
-
----
-
 ### Bandpass no Whisper é aplicado APENAS ao cálculo de energia, não ao modelo
 O `bandpass_filter()` (300–3400Hz) serve para isolar a voz humana do ruído de música ao calcular a energia do VAD.
 **Mas o áudio enviado ao Whisper para transcrição não passa por bandpass** — Whisper performa melhor sem o filtro.
@@ -100,7 +92,6 @@ Enviesa o modelo para os comandos conhecidos, reduzindo erros fonéticos. Não r
 ## Débitos Técnicos Ativos
 
 - `req.txt` deveria ser `requirements.txt` (convenção pip)
-- TTS com `espeak-ng` é funcional mas robótico — `piper-tts` (offline, modelos PT-BR) seria melhor no futuro
 - Sem testes automatizados — `remove_acentos()` e `verificar_palavra()` seriam fáceis de cobrir (funções puras)
 
 ---

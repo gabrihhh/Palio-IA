@@ -25,7 +25,7 @@ venv/bin/python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(f'[{i}]', p.get
                                          Música      Pareamento    LLM
                                          AVRCP       bluetoothctl  Ollama
                                               \          |         /
-                                               pyttsx3 + espeak-ng (TTS)
+                                               piper-tts ONNX (TTS)
                                                          ↓
                                               sounddevice → PipeWire → sink P2 → [Rádio]
 
@@ -57,7 +57,8 @@ Selecionar via `WHISPER_MODEL=medium` (ou `large-v3`).
 | `pyaudio` | 0.2.14 | Captura de microfone em tempo real |
 | `numpy` | 2.1.1 | Manipulação de arrays de áudio |
 | `scipy` | 1.15.1 | `resample_poly` — resampling 48kHz→16kHz (ratio 3:1 limpo, sem artefatos) |
-| `pyttsx3` | 2.98 | TTS offline (usa espeak-ng no Linux) |
+| `piper-tts` | latest | TTS neural offline — modelo ONNX PT-BR (`pt_BR-faber-medium`) |
+| `onnxruntime` | latest | Runtime ONNX para inferência do modelo piper |
 | `sounddevice` | 0.5.0 | Reprodução de arquivo WAV |
 | `soundfile` | 0.13.1 | Leitura de arquivo WAV |
 | `requests` | 2.32.3 | API REST do Ollama |
@@ -71,7 +72,6 @@ Selecionar via `WHISPER_MODEL=medium` (ou `large-v3`).
 | WirePlumber | Conecta dispositivos BT ao PipeWire automaticamente |
 | libspa-0.2-bluetooth | Suporte A2DP no PipeWire |
 | pactl | Controle de volume de sinks (usado pelo AudioDuck) |
-| espeak-ng | Backend do pyttsx3 no Linux — funcional mas robótico |
 
 ### LLM
 
@@ -92,7 +92,7 @@ Selecionar via `WHISPER_MODEL=medium` (ou `large-v3`).
 
 ```bash
 # Dependências do sistema (Debian 12 ARM64)
-sudo apt install python3-dbus bluez bluez-utils espeak-ng portaudio19-dev \
+sudo apt install python3-dbus bluez bluez-utils portaudio19-dev \
                  pipewire wireplumber libspa-0.2-bluetooth
 
 # Python

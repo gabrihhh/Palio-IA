@@ -25,10 +25,9 @@
 - Transcreve o utterance completo de uma vez — evita processar fala incompleta
 - Trade-off: latência aumenta (aguarda pausa natural antes de transcrever)
 
-**5. TTS síncrono com parâmetros fixos** — `main.py`
-- Taxa 160 wpm, volume 1.0 — fixos por design (ruído de carro exige inteligibilidade máxima)
-- `save_to_file()` apenas enfileira; `runAndWait()` é quem realmente gera o arquivo WAV
-- Não ler nem reproduzir `output.wav` antes de `runAndWait()` completar
+**5. TTS síncrono** — `main.py`
+- `voice.synthesize_wav()` gera WAV em arquivo temporário (`/tmp/palio_tts_*.wav`) e reproduz de forma síncrona via `sounddevice`
+- O modelo piper é carregado uma vez no boot (`inicializar()`) e reutilizado em todas as chamadas — não reinicializar por chamada
 
 ## Hierarquia de Detecção de Intenção
 
