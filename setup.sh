@@ -86,9 +86,11 @@ apt install -y \
     python3-dev \
     python3-venv \
     python3-dbus \
+    python3-pyaudio \
     portaudio19-dev \
     libportaudio2 \
     libportaudiocpp0 \
+    libsndfile1 \
     bluez \
     bluez-tools \
     pipewire \
@@ -112,8 +114,9 @@ VENV_DIR="$PROJECT_DIR/venv"
 python3 -m venv --system-site-packages "$VENV_DIR"
 
 # Instala dependências Python
+# PyAudio vem do apt (python3-pyaudio) via --system-site-packages; os demais via pip
 "$VENV_DIR/bin/pip" install --upgrade pip
-"$VENV_DIR/bin/pip" install -r "$PROJECT_DIR/req.txt"
+"$VENV_DIR/bin/pip" install -r "$PROJECT_DIR/req-offline.txt"
 
 log "Venv criado em $VENV_DIR."
 
@@ -220,6 +223,7 @@ StandardError=journal
 Environment="PYTHONUNBUFFERED=1"
 Environment="XDG_RUNTIME_DIR=/run/user/0"
 Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/0/bus"
+Environment="HF_HUB_OFFLINE=1"
 
 [Install]
 WantedBy=multi-user.target

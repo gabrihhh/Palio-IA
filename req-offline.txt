@@ -1,0 +1,15 @@
+faster-whisper
+# PyAudio: instalado via apt (python3-pyaudio) — não incluído aqui
+numpy==2.2.6
+scipy==1.15.1
+piper-tts
+onnxruntime
+sounddevice==0.5.0
+soundfile==0.13.1
+requests==2.32.3
+certifi==2024.8.30
+cffi==1.17.1
+charset-normalizer==3.3.2
+idna==3.10
+pycparser==2.22
+urllib3==2.2.3
