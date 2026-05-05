@@ -1,0 +1,60 @@
+#!/bin/bash
+# Palio-IA — validação de push
+# 1. Valida nome da branch (bloqueia se inválido)
+# 2. Bloqueia se .py mudou desde a última sincronização de docs (ai_docs/.docs_hash)
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+# main pode ser empurrada diretamente
+if [ "$branch" = "main" ]; then
+    exit 0
+fi
+
+# Validar formato: [feature|fix]/[main|qa]/[nome-breve-com-hifens]
+if ! echo "$branch" | grep -qE "^(feature|fix)/(main|qa)/[a-z0-9][a-z0-9-]*$"; then
+    echo ""
+    echo "  ❌  Push bloqueado — nome de branch inválido."
+    echo ""
+    echo "      Branch atual : $branch"
+    echo "      Formato      : [feature|fix]/[main|qa]/[nome-breve-com-hifens]"
+    echo ""
+    echo "      Exemplos:"
+    echo "        feature/main/bluetooth-reconnect"
+    echo "        fix/qa/audio-duck-volume"
+    echo "        feature/qa/whisper-vad-tuning"
+    echo ""
+    exit 1
+fi
+
+# Verificar se docs estão sincronizadas com o código
+last_docs_hash=$(cat ai_docs/.docs_hash 2>/dev/null)
+
+if [ -n "$last_docs_hash" ]; then
+    # Verifica se git conhece esse hash (pode ter sido rebaseado)
+    if ! git cat-file -e "${last_docs_hash}^{commit}" 2>/dev/null; then
+        echo ""
+        echo "  ⚠️   Hash de docs inválido ou não encontrado. Execute /update_docs antes do push."
+        echo ""
+        exit 1
+    fi
+
+    # Conta .py modificados desde a última sincronização
+    py_since_docs=$(git diff --name-only "$last_docs_hash"..HEAD 2>/dev/null | grep -cE "\.py$" || echo 0)
+
+    if [ "$py_since_docs" -gt 0 ]; then
+        py_files=$(git diff --name-only "$last_docs_hash"..HEAD 2>/dev/null | grep -E "\.py$" | sed 's/^/          /')
+        echo ""
+        echo "  ❌  Push bloqueado — documentação desatualizada."
+        echo ""
+        echo "      ${py_since_docs} arquivo(s) .py modificado(s) desde a última sincronização:"
+        echo "$py_files"
+        echo ""
+        echo "      Execute /update_docs para sincronizar antes de fazer push."
+        echo ""
+        exit 1
+    fi
+fi
+
+echo "  ✅  Branch válida: $branch"
+echo "  ✅  Documentação sincronizada."
+exit 0

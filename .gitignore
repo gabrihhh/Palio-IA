@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 *.pyo
 .bluetooth_devices
+.claude/settings.local.json
