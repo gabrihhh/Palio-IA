@@ -3,10 +3,12 @@ import vosk
 import json
 import logging
 import os
+import time
 import numpy as np
-from scipy.signal import resample_poly
+from difflib import SequenceMatcher
+from scipy.signal import resample_poly, butter, sosfilt
 import unicodedata
-from typing import Callable
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +24,42 @@ def remove_acentos(texto: str) -> str:
     )
 
 
-def verificar_palavra(frase: str, palavra: str) -> bool:
-    """Verifica se uma palavra está na frase, ignorando acentos e maiúsculas."""
+def _similaridade(a: str, b: str) -> float:
+    """Retorna similaridade entre duas strings (0.0 a 1.0)."""
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def verificar_palavra(frase: str, palavra: str, limiar: float = 0.75) -> bool:
+    """Verifica se uma palavra está na frase, ignorando acentos e maiúsculas.
+
+    Aceita correspondências fonéticas aproximadas (ex: 'carla' → 'carro')
+    usando similaridade de string com threshold configurável.
+    """
     frase_normalizada = remove_acentos(frase).lower()
     palavra_normalizada = remove_acentos(palavra).lower()
-    return palavra_normalizada in frase_normalizada
+
+    # Correspondência exata (substring)
+    if palavra_normalizada in frase_normalizada:
+        return True
+
+    # Fuzzy: verifica cada palavra da frase individualmente
+    for token in frase_normalizada.split():
+        if _similaridade(token, palavra_normalizada) >= limiar:
+            return True
+
+    return False
+
+
+def bandpass_filter(audio: np.ndarray, sample_rate: int, low_hz: int = 300, high_hz: int = 3400) -> np.ndarray:
+    """Filtra o áudio para a faixa de voz humana (300–3400Hz).
+
+    Reduz bleeding de música (graves e agudos fora da faixa de fala).
+    Aplicado antes do STT para melhorar VAD e reconhecimento.
+    """
+    nyq = sample_rate / 2.0
+    sos = butter(4, [low_hz / nyq, high_hz / nyq], btype='band', output='sos')
+    filtered = sosfilt(sos, audio.astype(np.float32))
+    return np.clip(filtered, -32768, 32767).astype(np.int16)
 
 
 def resample_audio(audio_data: np.ndarray, original_rate: int, target_rate: int) -> np.ndarray:
@@ -101,25 +134,36 @@ def get_best_microphone(p: pyaudio.PyAudio, target_rate: int) -> tuple[int, int]
 
 def iniciar_loop_stt(
     on_comando: Callable[[str], None],
+    on_wake_word_cb: Optional[Callable[[], None]] = None,
+    on_timeout_cb: Optional[Callable[[], None]] = None,
     wake_word: str = _DEFAULT_WAKE_WORD,
     model_path: str = "model-ptbr",
     debug: bool = False,
 ) -> None:
     """
-    Inicia o loop de captura de áudio e reconhecimento de fala.
+    Inicia o loop de captura de áudio com arquitetura dois estágios.
 
-    Chama on_comando(texto) sempre que a wake_word é detectada no texto reconhecido.
-    O texto completo (incluindo a wake word) é passado ao callback.
+    Estágio 1 — sempre ouvindo:
+      Aplica filtro passa-banda + VAD e procura apenas pela wake word.
+      Ao detectar: chama on_wake_word_cb(), aguarda 400ms (duck settle), entra no estágio 2.
+
+    Estágio 2 — ouvindo comando:
+      Captura o próximo utterance e chama on_comando(texto).
+      Timeout de 5s sem fala → chama on_timeout_cb() e volta ao estágio 1.
 
     Args:
-        on_comando:  Callback chamado quando a wake word é detectada.
-        wake_word:   Palavra que ativa o assistente (padrão: "carro").
-        model_path:  Caminho para o modelo Vosk PT-BR.
-        debug:       Se True, imprime tudo que o Vosk reconhece em tempo real.
+        on_comando:       Callback chamado com o texto do comando (sem wake word).
+        on_wake_word_cb:  Chamado imediatamente ao detectar a wake word (ex: duck volume).
+        on_timeout_cb:    Chamado se estágio 2 expirar sem comando (ex: restaurar volume).
+        wake_word:        Palavra de ativação (padrão: "carro").
+        model_path:       Caminho para o modelo Vosk PT-BR.
+        debug:            Se True, imprime reconhecimentos em tempo real.
     """
     TARGET_RATE = 16000
     CHUNK = 4096
     PREFERRED_RATE = 48000  # ratio 3:1 com 16kHz — resampling limpo
+    DUCK_WAIT = 0.4         # segundos para o duck efetivar antes de ouvir o comando
+    COMMAND_TIMEOUT = 5.0   # segundos máx aguardando comando no estágio 2
 
     model = carregar_modelo(model_path)
     p = pyaudio.PyAudio()
@@ -155,6 +199,9 @@ def iniciar_loop_stt(
     recognizer = vosk.KaldiRecognizer(model, TARGET_RATE)
     logger.info("Aguardando wake word '%s'...", wake_word)
 
+    stage = 1           # 1 = esperando wake word | 2 = esperando comando
+    stage2_start = 0.0
+
     try:
         while True:
             data = stream.read(CHUNK, exception_on_overflow=False)
@@ -163,6 +210,17 @@ def iniciar_loop_stt(
 
             raw = np.frombuffer(data, dtype=np.int16)
             audio_data = resample_audio(raw, capture_rate, TARGET_RATE)
+            audio_data = bandpass_filter(audio_data, TARGET_RATE)
+
+            # Timeout do estágio 2
+            if stage == 2 and (time.time() - stage2_start) > COMMAND_TIMEOUT:
+                logger.info("Timeout: nenhum comando detectado em %.0fs.", COMMAND_TIMEOUT)
+                if debug:
+                    print("[TIMEOUT] Voltando a ouvir wake word.", flush=True)
+                if on_timeout_cb:
+                    on_timeout_cb()
+                stage = 1
+                recognizer = vosk.KaldiRecognizer(model, TARGET_RATE)
 
             if recognizer.AcceptWaveform(audio_data.tobytes()):
                 result = json.loads(recognizer.Result())
@@ -171,15 +229,32 @@ def iniciar_loop_stt(
                 if not recognized_text:
                     continue
 
-                if debug:
-                    print(f"[STT] {recognized_text}", flush=True)
-                else:
-                    logger.debug("STT reconheceu: '%s'", recognized_text)
+                if stage == 1:
+                    if debug:
+                        print(f"[STT] {recognized_text}", flush=True)
+                    else:
+                        logger.debug("STT reconheceu: '%s'", recognized_text)
 
-                if verificar_palavra(recognized_text, wake_word):
-                    logger.info("Wake word detectada: '%s'", recognized_text)
+                    if verificar_palavra(recognized_text, wake_word):
+                        logger.info("Wake word detectada: '%s'", recognized_text)
+                        if on_wake_word_cb:
+                            on_wake_word_cb()
+                        time.sleep(DUCK_WAIT)
+                        recognizer = vosk.KaldiRecognizer(model, TARGET_RATE)
+                        stage = 2
+                        stage2_start = time.time()
+                        logger.info("Aguardando comando...")
+
+                elif stage == 2:
+                    if debug:
+                        print(f"[CMD] {recognized_text}", flush=True)
+                    else:
+                        logger.info("Comando: '%s'", recognized_text)
                     on_comando(recognized_text)
-            elif debug:
+                    stage = 1
+                    recognizer = vosk.KaldiRecognizer(model, TARGET_RATE)
+
+            elif debug and stage == 1:
                 partial = json.loads(recognizer.PartialResult()).get('partial', '')
                 vol = int(np.abs(raw).mean())
                 if partial:

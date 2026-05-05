@@ -9,9 +9,9 @@ Assistente de voz embarcado para um **Fiat Palio**, rodando em uma **Radxa Rock 
 Você fala **"carro"** seguido de um comando. O sistema reconhece sua voz, processa localmente e responde em voz alta. O áudio do celular entra via Bluetooth A2DP e sai pelo Rock Pi direto no rádio via cabo P2 (3.5mm).
 
 ```
-[Mic USB] → Vosk (STT) → Dispatcher → [Música / Bluetooth / LLM]
-                                              ↓
-                                    espeak-ng (TTS) → saída P2 → [Rádio]
+[Mic] → STT (Whisper ou Vosk) → Dispatcher → [Música / Bluetooth / LLM]
+                                                      ↓
+                                            espeak-ng (TTS) → saída P2 → [Rádio]
 
 [Celular] → BT A2DP → Rock Pi → cabo P2 → [Rádio]
 ```
@@ -25,7 +25,8 @@ Você fala **"carro"** seguido de um comando. O sistema reconhece sua voz, proce
 | Linguagem | Python 3.x |
 | Hardware | Radxa Rock Pi 4B — RK3399, ARM64 |
 | SO | Debian 12 Bookworm (CLI, sem desktop) |
-| STT (fala → texto) | [Vosk](https://alphacephei.com/vosk/) com modelo PT-BR |
+| STT — padrão | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (modelo `small`, PT-BR) |
+| STT — alternativo | [Vosk](https://alphacephei.com/vosk/) com modelo PT-BR (menor latência) |
 | TTS (texto → fala) | pyttsx3 + espeak-ng |
 | LLM | [Ollama](https://ollama.com/) com llama3.2:3b (local) |
 | Áudio — captura | PyAudio |
@@ -34,7 +35,7 @@ Você fala **"carro"** seguido de um comando. O sistema reconhece sua voz, proce
 | Áudio — controle | pactl |
 | Bluetooth — controle | bluez + bluetoothctl |
 | Bluetooth — música | dbus-python (AVRCP via bluez DBus) |
-| Resampling | scipy.signal.resample |
+| Resampling | scipy.signal.resample_poly |
 
 ---
 
@@ -97,14 +98,14 @@ pip install -r req.txt
 
 > O `--system-site-packages` é obrigatório para acessar o `python3-dbus` instalado via apt.
 
-### 3. Modelo de voz Vosk PT-BR
+### 3. Modelo de voz Vosk PT-BR (backend alternativo)
 
-Baixe um dos modelos em [alphacephei.com/vosk/models](https://alphacephei.com/vosk/models) e extraia na raiz do projeto como `model-ptbr/`:
+Necessário apenas se usar `STT_BACKEND=vosk`. Baixe em [alphacephei.com/vosk/models](https://alphacephei.com/vosk/models) e extraia na raiz como `model-ptbr/`:
 
 | Modelo | Tamanho | Indicado para |
 |---|---|---|
-| `vosk-model-small-pt-0.3` | ~30 MB | Deploy no Rock Pi (recomendado) |
-| `vosk-model-pt-fb-v0.1.1-20220516_2113` | ~1.5 GB | Maior precisão |
+| `vosk-model-small-pt-0.3` | ~30 MB | Deploy no Rock Pi (baixa latência) |
+| `vosk-model-pt-fb-v0.1.1-20220516_2113` | ~2.6 GB | Maior precisão |
 
 ```
 Palio-IA/
@@ -115,7 +116,11 @@ Palio-IA/
     └── ...
 ```
 
-### 4. Ollama (LLM local)
+### 4. Modelo Whisper (backend padrão)
+
+O modelo `small` (~460MB) é baixado automaticamente na primeira execução pelo `faster-whisper`.
+
+### 5. Ollama (LLM local)
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
@@ -123,18 +128,41 @@ ollama pull llama3.2:3b
 ollama serve
 ```
 
-> O sistema funciona sem Ollama — música e Bluetooth continuam operando normalmente. O LLM apenas fica indisponível.
+> O sistema funciona sem Ollama — música e Bluetooth continuam operando normalmente.
 
 ---
 
 ## Como rodar
 
+### Padrão (Whisper)
+
 ```bash
-source venv/bin/activate
-python main.py
+AUDIO_DEVICE=2 venv/bin/python3 main.py
+```
+
+### Com debug (mostra tudo que o STT reconhece)
+
+```bash
+AUDIO_DEVICE=2 venv/bin/python3 main.py --debug
+```
+
+### Com backend Vosk (menor latência)
+
+```bash
+AUDIO_DEVICE=2 STT_BACKEND=vosk venv/bin/python3 main.py
 ```
 
 O sistema toca dois bipes ao iniciar e fica aguardando a wake word **"carro"**.
+
+### Variáveis de ambiente
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `AUDIO_DEVICE` | auto | Índice do microfone (use `python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(i, p.get_device_info_by_index(i)['name']) for i in range(p.get_device_count()) if p.get_device_info_by_index(i)['maxInputChannels']>0]"` para listar) |
+| `STT_BACKEND` | `whisper` | Backend STT: `whisper` ou `vosk` |
+| `WHISPER_MODEL` | `small` | Modelo Whisper: `small`, `medium`, `large-v3` |
+| `WHISPER_SILENCE_THRESHOLD` | `400` | Limiar de amplitude para detectar silêncio (ajuste para ambientes ruidosos) |
+| `WHISPER_SILENCE_DURATION` | `0.8` | Segundos de silêncio para encerrar utterance |
 
 ---
 
@@ -143,10 +171,12 @@ O sistema toca dois bipes ao iniciar e fica aguardando a wake word **"carro"**.
 ```
 Palio-IA/
 ├── main.py                        # Entry point — orquestrador principal
-├── speech_to_text.py              # STT: Vosk + PyAudio + wake word
+├── speech_to_text.py              # STT: Vosk + PyAudio + wake word + fuzzy matching
 ├── modules/
 │   ├── core/
 │   │   └── dispatcher.py          # Roteador de intenções
+│   ├── stt/
+│   │   └── whisper_backend.py     # Backend STT alternativo (faster-whisper + VAD)
 │   ├── bluetooth/
 │   │   ├── music.py               # Controle de música via AVRCP (dbus)
 │   │   ├── pairing.py             # Pareamento e conexão Bluetooth por voz
@@ -180,4 +210,4 @@ O Rock Pi age como **sink A2DP** (recebe áudio do celular). A saída vai direto
 
 ## Versão atual
 
-**v0.2.0**
+**v0.3.0**

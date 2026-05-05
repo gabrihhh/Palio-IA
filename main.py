@@ -27,7 +27,12 @@ import pyttsx3
 import sounddevice as sd
 import soundfile as sf
 
-from speech_to_text import iniciar_loop_stt, verificar_palavra
+_STT_BACKEND = os.environ.get("STT_BACKEND", "whisper").lower()
+if _STT_BACKEND == "whisper":
+    from modules.stt.whisper_backend import iniciar_loop_stt
+    from speech_to_text import verificar_palavra
+else:
+    from speech_to_text import iniciar_loop_stt, verificar_palavra
 from modules.bluetooth.audio import create_volume_controller
 from modules.bluetooth.music import create_controller
 from modules.bluetooth.audio_duck import create_audio_duck
@@ -144,22 +149,27 @@ def _extrair_comando_apos_wake_word(texto: str) -> str:
 
 
 def criar_handler(dispatcher: Dispatcher, duck, volume):
-    """Cria o callback de comando para o loop STT."""
+    """Cria os callbacks de wake word, comando e timeout para o loop STT."""
 
-    def on_comando(texto: str) -> None:
-        logger.info("Wake word detectada. Texto completo: '%s'", texto)
-
-        # Baixa o volume imediatamente ao detectar a wake word
+    def on_wake_word() -> None:
+        """Chamado imediatamente ao detectar a wake word — reduz volume antes de ouvir o comando."""
         duck.on_wake_word()
 
-        try:
-            comando = _extrair_comando_apos_wake_word(texto)
+    def on_timeout() -> None:
+        """Chamado se o estágio 2 expirar sem comando — restaura volume."""
+        logger.info("Timeout: restaurando volume.")
+        duck.on_done()
 
-            if not comando:
+    def on_comando(texto: str) -> None:
+        """Chamado com o texto do comando (já sem a wake word)."""
+        logger.info("Comando recebido: '%s'", texto)
+
+        try:
+            if not texto:
                 falar("Oi. Pode falar.")
                 return
 
-            resposta = dispatcher.processar(comando)
+            resposta = dispatcher.processar(texto)
             # O PairingManager pode chamar falar() diretamente — dispatcher retorna "" nesses casos
             if resposta:
                 falar(resposta)
@@ -178,7 +188,7 @@ def criar_handler(dispatcher: Dispatcher, duck, volume):
                 elif acao == "set":
                     volume.set_step(step)
 
-    return on_comando
+    return on_comando, on_wake_word, on_timeout
 
 
 # --- Entry point ---
@@ -188,16 +198,24 @@ if __name__ == '__main__':
 
     if debug_mode:
         logging.getLogger().setLevel(logging.DEBUG)
-        logger.info("Modo debug ativado — exibindo tudo que o Vosk reconhece.")
+        logger.info("Modo debug ativado — exibindo tudo que o STT reconhece.")
+
+    logger.info("Backend STT: %s", _STT_BACKEND)
 
     dispatcher, duck, volume = inicializar()
-    handler = criar_handler(dispatcher, duck, volume)
+    on_comando, on_wake_word, on_timeout = criar_handler(dispatcher, duck, volume)
 
     tocar_boot()
     logger.info("Loop STT iniciado. Wake word: '%s'", WAKE_WORD)
 
     try:
-        iniciar_loop_stt(on_comando=handler, wake_word=WAKE_WORD, debug=debug_mode)
+        iniciar_loop_stt(
+            on_comando=on_comando,
+            on_wake_word_cb=on_wake_word,
+            on_timeout_cb=on_timeout,
+            wake_word=WAKE_WORD,
+            debug=debug_mode,
+        )
     except KeyboardInterrupt:
         logger.info("Encerrando Palio-IA.")
         sys.exit(0)
