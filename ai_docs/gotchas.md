@@ -100,7 +100,7 @@ Enviesa o modelo para os comandos conhecidos, reduzindo erros fonéticos. Não r
 
 Se o STT não reconhece corretamente:
 1. Verificar no log qual microfone foi selecionado e sua taxa
-2. Rodar com `--debug` para ver tudo que o Whisper transcreve em tempo real
+2. Rodar `python test/stt.py` — imprime tudo que o Whisper transcreve em tempo real sem wake word
 3. Testar com fala mais devagar e articulada — o modelo `small` tem limitações
 4. Verificar se `AUDIO_DEVICE=N` força o microfone correto
 5. Considerar `WHISPER_MODEL=medium` para maior precisão (latência ~5-8s no Rock Pi)

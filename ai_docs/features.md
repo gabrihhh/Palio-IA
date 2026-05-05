@@ -23,6 +23,7 @@
 - **Estágio 1** — sempre ouvindo, procura apenas a wake word
 - **Estágio 2** — após wake word, captura o próximo utterance como comando; timeout 5s
 - `DUCK_WAIT = 0.4s` entre wake word e início do estágio 2
+- `bypass_wake_word=True` em `iniciar_loop_stt()` — desativa os dois estágios e envia todo texto reconhecido diretamente para `on_comando`; usado pelos scripts de teste (`test/stt.py`, `test/chat.py`)
 
 **Filtro passa-banda** (`bandpass_filter()` em `speech_to_text.py:53-62`):
 - Filtra áudio para faixa de voz humana (300–3400Hz)
