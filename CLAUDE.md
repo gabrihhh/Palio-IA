@@ -16,7 +16,7 @@ Assistente de voz embarcado num Fiat Palio. Roda no **Radxa ROCK 4B** (ARM64, De
 
 | Arquivo | Responsabilidade | Status |
 |---|---|---|
-| `main.py` | Orquestrador + TTS (pyttsx3+sounddevice) + loop principal | Funcional |
+| `main.py` | Orquestrador + TTS (piper-tts+sounddevice) + loop principal | Funcional |
 | `speech_to_text.py` | Utilitários de áudio: resample, bandpass, pré-ênfase, seleção de mic, fuzzy match | Funcional |
 | `modules/stt/whisper_backend.py` | STT backend Whisper com VAD por energia (bandpass só para VAD; pré-ênfase + initial_prompt para o modelo) | Funcional |
 | `modules/core/dispatcher.py` | Roteador: texto → [música \| pareamento \| LLM] | Funcional |
@@ -117,3 +117,5 @@ E atualizar `README.md` para qualquer mudança visível ao usuário final (featu
 | 2026-05-05 | GPS e chamadas telefônicas removidos do roadmap | GPS: complexidade alta sem definição de integração; HFP: requer hardware extra |
 | 2026-05-05 | PipeWire ao invés de PulseAudio | Suporte nativo a múltiplos perfis BT simultâneos (A2DP sink + source) |
 | 2026-05-05 | Ollama em vez de rodar modelo diretamente | Gerencia ciclo de vida do modelo, mantém em memória entre calls, troca de modelo sem alterar código |
+| 2026-05-05 | piper-tts (OHF-Voice) substituiu pyttsx3+espeak-ng | espeak-ng é formântico (robótico); piper usa ONNX neural PT-BR com qualidade muito superior. Instalação offline via wheel ARM64 + modelo .onnx |
+| 2026-05-05 | `falar()` como closure em `inicializar()` | Carrega modelo uma vez no boot; mantém assinatura `Callable[[str], None]` sem quebrar PairingManager/Dispatcher |

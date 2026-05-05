@@ -21,10 +21,12 @@ Pré-requisitos:
 import logging
 import os
 import sys
+import tempfile
+import wave
 import numpy as np
-import pyttsx3
 import sounddevice as sd
 import soundfile as sf
+from piper import PiperVoice
 
 from modules.stt.whisper_backend import iniciar_loop_stt
 from speech_to_text import verificar_palavra
@@ -45,6 +47,10 @@ logger = logging.getLogger("palio")
 
 # --- Wake word ---
 WAKE_WORD = "carro"
+
+# --- TTS: modelo piper ---
+_BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+PIPER_MODEL = os.getenv('PIPER_MODEL', os.path.join(_BASE_DIR, 'models', 'pt_BR-faber-medium.onnx'))
 
 
 # --- Utilitário TTS ---
@@ -82,32 +88,10 @@ def tocar_boot() -> None:
         logger.warning("Não foi possível tocar som de boot: %s", e)
 
 
-# --- TTS ---
-
-def falar(texto: str) -> None:
-    """Converte texto em fala e reproduz pelo dispositivo de saída de áudio."""
-    logger.info("TTS: '%s'", texto)
-    engine = pyttsx3.init()
-    engine.setProperty('rate', 160)
-    engine.setProperty('volume', 1.0)
-    engine.save_to_file(texto, 'output.wav')
-    engine.runAndWait()
-
-    try:
-        data, samplerate = sf.read('output.wav')
-        sd.play(data, samplerate)
-        sd.wait()
-    except Exception as e:
-        logger.error("Erro ao reproduzir TTS: %s", e)
-    finally:
-        if os.path.exists('output.wav'):
-            os.remove('output.wav')
-
-
 # --- Inicialização ---
 
-def inicializar() -> tuple[Dispatcher, object, object]:
-    """Inicializa todos os módulos e retorna o Dispatcher, AudioDuck e VolumeController."""
+def inicializar():
+    """Inicializa todos os módulos e retorna o Dispatcher, AudioDuck, VolumeController e falar."""
     logger.info("Inicializando Palio-IA...")
 
     autoconnect_boot()
@@ -130,8 +114,28 @@ def inicializar() -> tuple[Dispatcher, object, object]:
     volume = create_volume_controller()
     logger.info("VolumeController inicializado.")
 
+    voice = PiperVoice.load(PIPER_MODEL)
+    logger.info("TTS: modelo piper carregado (%s).", PIPER_MODEL)
+
+    def falar(texto: str) -> None:
+        """Converte texto em fala e reproduz pelo dispositivo de saída de áudio."""
+        logger.info("TTS: '%s'", texto)
+        fd, tmp_wav = tempfile.mkstemp(suffix='.wav', prefix='palio_tts_')
+        os.close(fd)
+        try:
+            with wave.open(tmp_wav, 'wb') as wav_file:
+                voice.synthesize_wav(texto, wav_file)
+            data, samplerate = sf.read(tmp_wav)
+            sd.play(data, samplerate)
+            sd.wait()
+        except Exception as e:
+            logger.error("Erro ao reproduzir TTS: %s", e)
+        finally:
+            if os.path.exists(tmp_wav):
+                os.remove(tmp_wav)
+
     dispatcher = Dispatcher(bluetooth=bt, llm=llm, falar_cb=falar, volume=volume)
-    return dispatcher, duck, volume
+    return dispatcher, duck, volume, falar
 
 
 # --- Handler de comandos STT ---
@@ -160,7 +164,7 @@ def _extrair_comando_apos_wake_word(texto: str) -> str:
     return texto.strip()
 
 
-def criar_handler(dispatcher: Dispatcher, duck, volume):
+def criar_handler(dispatcher: Dispatcher, duck, volume, falar):
     """Cria os callbacks de wake word, comando e timeout para o loop STT."""
 
     def on_wake_word() -> None:
@@ -212,8 +216,8 @@ if __name__ == '__main__':
         logging.getLogger().setLevel(logging.DEBUG)
         logger.info("Modo debug ativado — exibindo tudo que o STT reconhece.")
 
-    dispatcher, duck, volume = inicializar()
-    on_comando, on_wake_word, on_timeout = criar_handler(dispatcher, duck, volume)
+    dispatcher, duck, volume, falar = inicializar()
+    on_comando, on_wake_word, on_timeout = criar_handler(dispatcher, duck, volume, falar)
 
     tocar_boot()
     logger.info("Loop STT iniciado. Wake word: '%s'", WAKE_WORD)

@@ -4,20 +4,6 @@ Assistente de voz embarcado para um **Fiat Palio**, rodando em uma **Radxa Rock 
 
 ---
 
-## Como funciona
-
-Você fala **"carro"** seguido de um comando. O sistema reconhece sua voz, processa localmente e responde em voz alta. O áudio do celular entra via Bluetooth A2DP e sai pelo Rock Pi direto no rádio via cabo P2 (3.5mm).
-
-```
-[Mic] → faster-whisper → Dispatcher → [Música / Bluetooth / LLM]
-                                              ↓
-                                    espeak-ng (TTS) → saída P2 → [Rádio]
-
-[Celular] → BT A2DP → Rock Pi → cabo P2 → [Rádio]
-```
-
----
-
 ## Stack
 
 | Camada | Tecnologia |
@@ -26,7 +12,7 @@ Você fala **"carro"** seguido de um comando. O sistema reconhece sua voz, proce
 | Hardware | Radxa Rock Pi 4B — RK3399, ARM64 |
 | SO | Debian 12 Bookworm (CLI, sem desktop) |
 | STT | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (modelo `small`, PT-BR) |
-| TTS (texto → fala) | pyttsx3 + espeak-ng |
+| TTS (texto → fala) | [piper-tts](https://github.com/OHF-Voice/piper1-gpl) + modelo `pt_BR-faber-medium` |
 | LLM | [Ollama](https://ollama.com/) com llama3.2:3b (local) |
 | Áudio — captura | PyAudio |
 | Áudio — reprodução | sounddevice + soundfile |
@@ -83,7 +69,7 @@ Qualquer outro comando após "carro" é enviado ao LLM (Ollama). O assistente re
 ### 1. Dependências do sistema
 
 ```bash
-sudo apt install python3-dbus bluez bluez-utils espeak-ng portaudio19-dev \
+sudo apt install python3-dbus bluez bluez-utils portaudio19-dev \
                  pipewire wireplumber libspa-0.2-bluetooth
 ```
 
@@ -97,11 +83,19 @@ pip install -r req.txt
 
 > O `--system-site-packages` é obrigatório para acessar o `python3-dbus` instalado via apt.
 
-### 3. Modelo Whisper
+### 3. piper-tts (TTS offline)
+
+Os wheels ARM64 e o modelo de voz já estão incluídos no projeto (pastas `wheels/` e `models/`):
+
+```bash
+pip install --no-index --find-links=wheels/ piper-tts
+```
+
+### 4. Modelo Whisper
 
 O modelo `small` (~460MB) é baixado automaticamente na primeira execução pelo `faster-whisper`.
 
-### 4. Ollama (LLM local)
+### 5. Ollama (LLM local)
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
@@ -135,51 +129,10 @@ O sistema toca dois bipes ao iniciar e fica aguardando a wake word **"carro"**.
 | `WHISPER_MODEL` | `small` | Modelo Whisper: `small`, `medium`, `large-v3` |
 | `WHISPER_SILENCE_THRESHOLD` | `400` | Limiar de amplitude para detectar silêncio |
 | `WHISPER_SILENCE_DURATION` | `0.8` | Segundos de silêncio para encerrar utterance |
-
----
-
-## Estrutura do projeto
-
-```
-Palio-IA/
-├── main.py                        # Entry point — orquestrador principal
-├── speech_to_text.py              # Utilitários de áudio: resample, VAD, seleção de mic
-├── modules/
-│   ├── core/
-│   │   └── dispatcher.py          # Roteador de intenções
-│   ├── stt/
-│   │   └── whisper_backend.py     # STT: faster-whisper + VAD por energia
-│   ├── bluetooth/
-│   │   ├── music.py               # Controle de música via AVRCP (dbus)
-│   │   ├── pairing.py             # Pareamento e conexão Bluetooth por voz
-│   │   ├── audio_duck.py          # Duck de áudio (baixa volume na wake word)
-│   │   └── audio.py               # Controle de volume por voz
-│   └── llm/
-│       ├── client.py              # Cliente Ollama + memória persistente (brain.md)
-│       └── persona.py             # System prompt — persona Palio
-├── data/
-│   ├── devices.json               # Dispositivo Bluetooth salvo (1 por vez)
-│   └── brain.md                   # Memória persistente do Palio (nome, preferências)
-├── ai_docs/                       # Documentação técnica interna
-├── req.txt                        # Dependências Python
-└── CLAUDE.md                      # Instruções para o Claude Code
-```
-
----
-
-## Arquitetura de áudio
-
-```
-[Celular] ──BT A2DP──► [Rock Pi] ──cabo P2──► [Rádio AUX]
-                            │
-                  PipeWire loopback
-                  TTS misturado aqui
-```
-
-O Rock Pi age como **sink A2DP** (recebe áudio do celular). A saída vai direto pelo P2 para o rádio — sem Bluetooth na saída, sem depender de pareamento com o rádio.
+| `PIPER_MODEL` | `models/pt_BR-faber-medium.onnx` | Caminho para o modelo piper (relativo ao `main.py`) |
 
 ---
 
 ## Versão atual
 
-**v0.4.0**
+**v0.5.0**

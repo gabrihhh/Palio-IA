@@ -278,12 +278,36 @@ Loop contínuo:
 
 ---
 
+---
+
+### Síntese de Voz Neural (TTS com piper-tts)
+**Descrição**: Substituição completa de `pyttsx3+espeak-ng` por `piper-tts` (OHF-Voice/piper1-gpl), usando modelo ONNX neural PT-BR para voz natural.
+
+**Componentes Envolvidos**: `main.py` — closure `falar()` dentro de `inicializar()`
+
+**Modelo**: `pt_BR-faber-medium` (~63 MB ONNX), carregado uma vez no boot via `PiperVoice.load()`
+
+**Fluxo**:
+1. `PiperVoice.load(PIPER_MODEL)` no boot — modelo fica em memória durante toda a sessão
+2. A cada chamada `falar(texto)`: `voice.synthesize_wav()` gera WAV em arquivo temporário único (`/tmp/palio_tts_XXXXXX.wav`)
+3. Reprodução via `sounddevice` + `soundfile` — idêntico ao anterior
+4. Arquivo temporário removido após reprodução
+
+**Configuração**:
+- `PIPER_MODEL` env var — override do caminho do modelo (padrão: `models/pt_BR-faber-medium.onnx` relativo ao `main.py`)
+
+**Instalação offline** (pendrive → Rock Pi):
+- Wheel ARM64: `piper_tts-1.4.2-*-aarch64*.whl` (GitHub Releases `OHF-Voice/piper1-gpl`)
+- `onnxruntime` wheel ARM64 (via `pip download --platform manylinux_2_17_aarch64`)
+- Modelo: `pt_BR-faber-medium.onnx` + `.onnx.json` (Hugging Face `rhasspy/piper-voices`)
+
+**Decisão arquitetural**: `falar()` é closure dentro de `inicializar()` — captura `voice` sem alterar a assinatura `Callable[[str], None]` usada como callback no `PairingManager` e `Dispatcher`.
+
+---
+
 ## Funcionalidades Planejadas
 
-### [GRANDE] Melhorar qualidade do TTS com piper-tts
-**Problema**: `espeak-ng` é funcional mas soa robótico. `piper-tts` tem modelos PT-BR offline com qualidade significativamente superior.
-
-**O que fazer**: instalar `piper-tts`, baixar um modelo PT-BR (ex: `pt_BR-faber-medium`), substituir a função `falar()` em `main.py` para usar piper em vez de pyttsx3+espeak-ng. Manter espeak-ng como fallback. Avaliar latência no Rock Pi 4B antes de adotar como padrão.
+*(nenhuma no momento)*
 
 ---
 

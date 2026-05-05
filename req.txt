@@ -2,7 +2,8 @@ faster-whisper
 PyAudio==0.2.14
 numpy==2.1.1
 scipy==1.15.1
-pyttsx3==2.98
+piper-tts
+onnxruntime
 sounddevice==0.5.0
 soundfile==0.13.1
 requests==2.32.3
