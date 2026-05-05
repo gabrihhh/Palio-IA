@@ -313,36 +313,6 @@ class BluetoothAudioController:
 
         return -1
 
-    # ------------------------------------------------------------------
-    # Reconexão
-    # ------------------------------------------------------------------
-
-    def reconnect_devices(self) -> bool:
-        """
-        Dispara o script de reconexão Bluetooth gerado pelo bluetooth_config.sh.
-
-        Útil para reconectar após o rádio do carro ser ligado.
-        """
-        import os
-
-        project_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        reconnect_script = os.path.join(project_dir, "scripts", "bt_reconnect.sh")
-
-        if not os.path.exists(reconnect_script):
-            logger.warning(
-                f"Script de reconexão não encontrado: {reconnect_script}. "
-                "Execute bluetooth_config.sh primeiro."
-            )
-            return False
-
-        code, out = _run(["bash", reconnect_script])
-        if code == 0:
-            logger.info("Reconexão Bluetooth iniciada.")
-            return True
-        else:
-            logger.error(f"Erro ao reconectar Bluetooth: {out}")
-            return False
-
 
 # =============================================================================
 # Mock para desenvolvimento no Windows
@@ -401,10 +371,6 @@ class MockAudioController:
 
     def get_volume(self, pactl_sink_name: str) -> int:
         return self._volumes.get(pactl_sink_name, 80)
-
-    def reconnect_devices(self) -> bool:
-        logger.info("[MOCK] Reconexão Bluetooth simulada.")
-        return True
 
 
 # =============================================================================

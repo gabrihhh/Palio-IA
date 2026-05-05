@@ -51,6 +51,20 @@ logger = logging.getLogger("palio")
 WAKE_WORD = "carro"
 
 
+# --- Utilitário TTS ---
+
+def _limpar_markdown(texto: str) -> str:
+    """Remove formatação markdown antes de passar o texto ao TTS."""
+    import re
+    texto = re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', texto)   # **bold**, *itálico*, ***ambos***
+    texto = re.sub(r'_{1,2}(.+?)_{1,2}', r'\1', texto)      # __bold__, _itálico_
+    texto = re.sub(r'`{1,3}[^`]*`{1,3}', '', texto)         # `código` e ```blocos```
+    texto = re.sub(r'^#{1,6}\s+', '', texto, flags=re.MULTILINE)  # # Títulos
+    texto = re.sub(r'^\s*[-*]\s+', '', texto, flags=re.MULTILINE) # - bullets e * bullets
+    texto = re.sub(r'^\s*>\s+', '', texto, flags=re.MULTILINE)    # > blockquotes
+    return texto.strip()
+
+
 # --- Som de boot ---
 
 def tocar_boot() -> None:
@@ -172,7 +186,7 @@ def criar_handler(dispatcher: Dispatcher, duck, volume):
             resposta = dispatcher.processar(texto)
             # O PairingManager pode chamar falar() diretamente — dispatcher retorna "" nesses casos
             if resposta:
-                falar(resposta)
+                falar(_limpar_markdown(resposta))
         finally:
             # Restaura o volume original antes de aplicar qualquer mudança pedida
             duck.on_done()
