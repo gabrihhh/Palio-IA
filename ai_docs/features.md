@@ -3,40 +3,70 @@
 ## Funcionalidades Implementadas
 
 ### Reconhecimento de Voz Offline (STT)
-**Descrição**: Captura áudio contínuo do microfone e converte fala em texto usando o modelo Vosk PT-BR localmente, sem depender de internet.
+**Descrição**: Captura áudio contínuo do microfone e converte fala em texto localmente, sem depender de internet. Suporta dois backends intercambiáveis via `STT_BACKEND`.
 
-**Componentes Envolvidos**:
-- `speech_to_text.py` — módulo principal do STT
-- `model-ptbr/` — modelo Vosk (deve ser baixado manualmente)
+**Backends disponíveis**:
+
+| Backend | Variável | Precisão | Latência (notebook) | Latência (Rock Pi 4B) |
+|---|---|---|---|---|
+| faster-whisper `small` | `STT_BACKEND=whisper` (padrão) | Alta | ~1s | ~2-4s |
+| Vosk PT-BR | `STT_BACKEND=vosk` | Média | ~0.5s | ~0.5s |
+
+**Componentes**:
+- `speech_to_text.py` — backend Vosk + funções compartilhadas (resample, fuzzy match, seleção de mic)
+- `modules/stt/whisper_backend.py` — backend Whisper com VAD por energia
 - `PyAudio` — captura do microfone
-- `scipy.signal.resample` — ajuste de taxa de amostragem
+- `scipy.signal.resample_poly` — resampling para 16kHz (ratio limpo 3:1 a 48kHz)
 
-**Fluxo de execução**:
-1. Detecta o melhor microfone disponível (mais próximo de 16kHz)
-2. Abre stream de áudio com a taxa nativa do microfone
-3. Lê chunks de 4096 amostras em loop contínuo
-4. Se taxa do microfone != 16kHz, reamostra para 16kHz (Vosk exige)
-5. Alimenta o recognizer Vosk com os bytes de áudio
-6. Quando `AcceptWaveform()` retorna `True`, processa o resultado final
-7. Extrai texto reconhecido do JSON de resultado
+**Arquitetura dois estágios (ambos os backends)**:
+- **Estágio 1** — sempre ouvindo, procura apenas a wake word
+- **Estágio 2** — após wake word, captura o próximo utterance como comando; timeout 5s
+- `DUCK_WAIT = 0.4s` entre wake word e início do estágio 2
 
-**Dependências**: Modelo Vosk PT-BR em `./model-ptbr/`
+**Filtro passa-banda** (`bandpass_filter()` em `speech_to_text.py:53-62`):
+- Filtra áudio para faixa de voz humana (300–3400Hz)
+- Reduz bleeding de música tocando no carro
+- No Whisper: aplicado APENAS para cálculo de energia (VAD) — o áudio enviado ao modelo é raw resampled
+- No Vosk: aplicado antes do `KaldiRecognizer`
+
+**Fluxo Whisper** (`CHUNK=1024`):
+1. Detecta o melhor microfone (respeita `AUDIO_DEVICE`), captura preferencial a 48kHz
+2. Para cada chunk: resample → bandpass → calcula energia (VAD)
+3. Quando energia > threshold: acumula chunks em `speech_buffer` (com pre-buffer de 0.3s)
+4. Ao detectar silêncio (`WHISPER_SILENCE_DURATION=0.8s`): transcreve buffer com Whisper (sem bandpass)
+5. Checa wake word com fuzzy matching (75%) → entra estágio 2
+
+**Fluxo Vosk** (`CHUNK=4096`):
+1. Detecta microfone, captura preferencial a 48kHz
+2. Lê chunks em loop: resample_poly → bandpass → `KaldiRecognizer`
+3. Quando `AcceptWaveform()` retorna `True`, processa resultado final
+4. Checa wake word → entra estágio 2
 
 ---
 
-### Auto-seleção de Microfone
+### Seleção de Microfone
 **Descrição**: Itera por todos os dispositivos de áudio disponíveis e seleciona automaticamente o microfone cuja taxa nativa é mais próxima de 16kHz.
 
 **Componentes Envolvidos**: `speech_to_text.py` — função `get_best_microphone()`
 
-**Comportamento**: Se nenhum microfone for encontrado, o programa encerra com `exit(1)`.
+**Comportamento**:
+- Se `AUDIO_DEVICE=N` estiver definido, usa o dispositivo N diretamente (sem auto-seleção)
+- Caso contrário, auto-seleciona por proximidade de taxa com 16kHz
+- Se nenhum microfone for encontrado, encerra com `exit(1)`
+
+**Listar dispositivos disponíveis**:
+```bash
+AUDIO_DEVICE=2 venv/bin/python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(f'[{i}]', p.get_device_info_by_index(i)['name']) for i in range(p.get_device_count()) if p.get_device_info_by_index(i)['maxInputChannels']>0]; p.terminate()"
+```
 
 ---
 
 ### Resampling de Áudio
-**Descrição**: Converte áudio capturado na taxa nativa do microfone para 16kHz (taxa exigida pelo Vosk).
+**Descrição**: Converte áudio capturado na taxa nativa do microfone para 16kHz (taxa exigida pelo Vosk e Whisper).
 
 **Componentes Envolvidos**: `speech_to_text.py` — função `resample_audio()`
+
+**Implementação**: `scipy.signal.resample_poly` com ratio calculado via `gcd`. Prefere captura a 48kHz (ratio 3:1 com 16kHz, sem artefatos de borda). Resultado sempre em `int16`.
 
 ---
 
@@ -45,7 +75,9 @@
 
 **Wake word**: `"carro"`
 
-**Normalização**: Usa `verificar_palavra()` que remove acentos e ignora maiúsculas antes de comparar.
+**Detecção**: `verificar_palavra()` em `speech_to_text.py` usa dois métodos combinados:
+1. **Correspondência exata** (substring) — remove acentos e ignora maiúsculas
+2. **Fuzzy matching** (fallback) — usa `difflib.SequenceMatcher` com limiar de 75% para aceitar erros fonéticos do STT (ex: "carla" → "carro", "caro" → "carro")
 
 ---
 
@@ -169,17 +201,79 @@ Loop contínuo:
 
 ---
 
-## Funcionalidades Planejadas
+### Controle de Volume por Voz
+**Descrição**: Ajusta o volume do sink padrão do PipeWire via `pactl` por comandos de voz.
 
+**Componentes Envolvidos**: `modules/bluetooth/audio.py` → `VolumeController`, `modules/core/dispatcher.py`
+
+**Comandos reconhecidos**:
+| Frase dita | Ação |
+|---|---|
+| "aumenta", "aumentar", "sobe", "mais volume" | +10% |
+| "diminui", "diminuir", "desce", "abaixa" | -10% |
+| "volume [um..dez]" | define absoluto (volume 7 = 70%, volume 10 = 100%) |
+
+**Detalhe de implementação**: o volume é aplicado **após** `duck.on_done()` para não ser sobrescrito pela restauração do AudioDuck. O dispatcher armazena como `pending_volume` e o `main.py` consome depois do duck (`main.py:181-189`).
+
+**Requisito**: Linux + PipeWire + `pactl`
 
 ---
 
-### Controle de Volume por Voz
-**Descrição**: Aumentar ou diminuir o volume do sistema por comando de voz.
+## Funcionalidades Planejadas
 
-**Componente preparado**: `modules/bluetooth/audio.py` — `BluetoothAudioController` (implementado, ainda não integrado ao dispatcher)
+### [BROKEN] `bt_reconnect.sh` ausente
+**Problema**: `audio.py:reconnect_devices()` referencia `scripts/bt_reconnect.sh` que não existe no repositório. O método nunca é chamado hoje, mas falha se chamado.
 
-**Integração pendente**: Adicionar intents de volume no `dispatcher.py` e conectar ao `BluetoothAudioController`.
+**O que fazer**: criar `scripts/bt_reconnect.sh` (script bash que reconecta o dispositivo salvo em `data/devices.json` via `bluetoothctl connect <MAC>`) ou deletar o método `reconnect_devices()` de `audio.py` se não for necessário.
+
+---
+
+### [PEQUENO] Limpeza de markdown na resposta do LLM antes do TTS
+**Problema**: o Ollama pode retornar `**negrito**`, `- bullets`, backticks e outros marcadores markdown que o espeak-ng lê literalmente ("asterisco asterisco negrito asterisco asterisco").
+
+**O que fazer**: adicionar uma função `_limpar_para_tts(texto: str) -> str` que remove formatação markdown antes de passar a resposta para `falar()`. Pode ser inserida em `main.py` no `on_comando()` ou em `modules/llm/client.py` no retorno do `chat()`.
+
+---
+
+### [PEQUENO] Comando de voz para resetar histórico da conversa
+**Problema**: `OllamaClient.reset_history()` existe (`client.py:122`) mas não há nenhum comando de voz conectado a ele. O usuário não consegue limpar o contexto da conversa sem reiniciar o sistema.
+
+**O que fazer**: adicionar intenção `"esquece"` / `"nova conversa"` / `"reseta"` no dispatcher (`dispatcher.py`) que chame `llm.reset_history()` e retorne algo como `"Pronto, esqueci tudo. Pode começar."`.
+
+---
+
+### [PEQUENO] `AUDIO_DEVICE` no serviço systemd
+**Problema**: `palio-ia.service` não define `AUDIO_DEVICE`. No Rock Pi com múltiplos dispositivos de áudio (HDMI, analógico, USB), a auto-seleção pode escolher o dispositivo errado.
+
+**O que fazer**: após identificar o índice correto do microfone no Rock Pi real, adicionar `Environment="AUDIO_DEVICE=N"` no `palio-ia.service` (e atualizar o `palio-ia.service` na raiz para referência).
+
+---
+
+### [MÉDIO] Auto-connect Bluetooth no boot
+**Problema**: o usuário precisa dizer `"carro conectar"` toda vez que liga o carro. O sistema não tenta conectar ao dispositivo salvo automaticamente.
+
+**Decisão pendente**: verificar se isso é realmente irritante no uso real antes de implementar — pode ser que o usuário prefira controle explícito. Se implementar, adicionar tentativa de conexão silenciosa em `main.py` durante `inicializar()`, após o boot sound, usando `pairing.conectar()`. Não falar nada se falhar (celular pode estar desligado).
+
+---
+
+### [MÉDIO] VAD (Voice Activity Detection) para o backend Vosk
+**Problema**: o backend Vosk processa áudio continuamente sem filtrar períodos de silêncio ou ruído de fundo (motor, rádio, conversa). Isso aumenta falsos positivos e consumo de CPU no Rock Pi. O Whisper já tem VAD por energia; o Vosk não.
+
+**O que fazer**: adaptar a lógica de VAD do `whisper_backend.py` para o loop Vosk em `speech_to_text.py` — usar `bandpass_filter()` + threshold de energia para só alimentar o `KaldiRecognizer` quando houver fala detectada.
+
+---
+
+### [GRANDE] Melhorar qualidade do TTS com piper-tts
+**Problema**: `espeak-ng` é funcional mas soa robótico. `piper-tts` tem modelos PT-BR offline com qualidade significativamente superior.
+
+**O que fazer**: instalar `piper-tts`, baixar um modelo PT-BR (ex: `pt_BR-faber-medium`), substituir a função `falar()` em `main.py` para usar piper em vez de pyttsx3+espeak-ng. Manter espeak-ng como fallback. Avaliar latência no Rock Pi 4B antes de adotar como padrão.
+
+---
+
+### [MÉDIO] Expor status do `BluetoothAudioController`
+**Problema**: `audio.py` tem `BluetoothAudioController` completo (lista dispositivos BT, verifica loopback PipeWire, status de conexão) mas nunca é instanciado nem usado. Só `VolumeController` é usado.
+
+**O que fazer**: decidir se esse status é útil — por exemplo, um comando `"carro status"` que fale o estado atual (celular conectado ou não, loopback ativo). Se não for necessário, remover a classe para reduzir código morto.
 
 ---
 
@@ -209,20 +303,3 @@ Loop contínuo:
 - Checar se o AudioDuck está com o percentual certo (20%) no ambiente real
 - Limpar qualquer workaround ou TODO deixado durante o desenvolvimento inicial
 
----
-
-## Evolução do Projeto por Versão
-
-| Versão | Descrição |
-|--------|-----------|
-| v0.0.1 | Criação dos módulos TTS e STT iniciais |
-| v0.0.2 | TTS offline com pyttsx3 |
-| v0.0.3 | Melhorias gerais |
-| v0.0.4 | Comandos de voz básicos |
-| v0.0.5 | Melhorias STT |
-| v0.0.6 | STT offline com Vosk |
-| v0.0.7 | Voz e reconhecimento configurados |
-| v0.0.8 | Migração para sounddevice (cross-platform), remoção do winsound |
-| v0.0.9 | Bluetooth AVRCP, pareamento por voz, LLM Ollama, AudioDuck, Dispatcher |
-| v0.1.0 | Wake word "carro", arquitetura AUX P2, pareamento por modo descobrível, boot sound, setup.sh |
-| v0.2.0 | Controle de volume por voz (aumenta, diminui, volume 1-10), README.md, PipeWire configurado |
