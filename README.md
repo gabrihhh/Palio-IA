@@ -129,7 +129,7 @@ O sistema toca dois bipes ao iniciar e fica aguardando a wake word **"carro"**.
 | `WHISPER_MODEL` | `small` | Modelo Whisper: `small`, `medium`, `large-v3` |
 | `WHISPER_SILENCE_THRESHOLD` | `400` | Limiar de amplitude para detectar silêncio |
 | `WHISPER_SILENCE_DURATION` | `0.8` | Segundos de silêncio para encerrar utterance |
-| `PIPER_MODEL` | `models/pt_BR-faber-medium.onnx` | Caminho para o modelo piper (relativo ao `main.py`) |
+| `PIPER_MODEL` | `models/pt_BR-cadu-medium.onnx` | Caminho para o modelo piper (relativo ao `main.py`) |
 
 ---
 
