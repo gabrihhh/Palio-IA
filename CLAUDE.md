@@ -18,14 +18,14 @@ Assistente de voz embarcado num Fiat Palio. Roda no **Radxa ROCK 4B** (ARM64, De
 |---|---|---|
 | `main.py` | Orquestrador + TTS (pyttsx3+sounddevice) + loop principal | Funcional |
 | `speech_to_text.py` | STT backend Vosk + resample + bandpass 300-3400Hz + wake word + fuzzy match | Funcional |
-| `modules/stt/whisper_backend.py` | STT backend Whisper com VAD por energia (bandpass só para VAD, não para o modelo) | Funcional |
+| `modules/stt/whisper_backend.py` | STT backend Whisper com VAD por energia (bandpass só para VAD; pré-ênfase + initial_prompt para o modelo) | Funcional |
 | `modules/core/dispatcher.py` | Roteador: texto → [música \| pareamento \| LLM] | Funcional |
 | `modules/bluetooth/music.py` | AVRCP: próxima, anterior, pausa, play, info da faixa | Funcional |
-| `modules/bluetooth/pairing.py` | Pareamento BT por voz, 1 device em `data/devices.json` | Funcional |
+| `modules/bluetooth/pairing.py` | Pareamento BT por voz + `autoconnect_boot()` no boot, 1 device em `data/devices.json` | Funcional |
 | `modules/bluetooth/audio_duck.py` | Duck volume → 20% na wake word, restaura após TTS | Funcional |
 | `modules/bluetooth/audio.py` | Controle de volume por voz (1-10 = 10%-100%, +10%/-10%) | Funcional |
-| `modules/llm/client.py` | Cliente Ollama — histórico multi-turno | Funcional |
-| `modules/llm/persona.py` | System prompt: o carro fala em 1ª pessoa | Funcional |
+| `modules/llm/client.py` | Cliente Ollama — histórico multi-turno + memória persistente via `data/brain.md` | Funcional |
+| `modules/llm/persona.py` | System prompt + `MEMORY_INSTRUCTIONS` (regras do brain.md para o LLM) | Funcional |
 
 **Variáveis de ambiente:**
 

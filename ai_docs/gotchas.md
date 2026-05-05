@@ -73,16 +73,17 @@ O arquivo só existe após `runAndWait()` retornar. Não tentar reproduzir `outp
 
 ### Bandpass no Whisper é aplicado APENAS ao cálculo de energia, não ao modelo
 O `bandpass_filter()` (300–3400Hz) serve para isolar a voz humana do ruído de música ao calcular a energia do VAD.
-**Mas o áudio enviado ao Whisper para transcrição é o raw resampled sem bandpass** — Whisper performa melhor sem o filtro.
+**Mas o áudio enviado ao Whisper para transcrição não passa por bandpass** — Whisper performa melhor sem o filtro.
+O que SIM é aplicado antes do Whisper é o `pre_emphasis_filter()` (coef=0.97) — este realça consoantes/fricativas e melhora precisão.
 
 ```
-chunk raw → resample_poly → bandpass → mean(abs) → VAD decision
-chunk raw → resample_poly →                       → Whisper.transcribe()
+chunk raw → resample_poly → bandpass → mean(abs)              → VAD decision
+chunk raw → resample_poly → pre_emphasis_filter               → Whisper.transcribe()
 ```
 
 Se aplicar bandpass no input do Whisper, a qualidade de transcrição cai. Não "simplificar" isso.
 
-**Localização**: `whisper_backend.py:116-118`
+**Localização**: `whisper_backend.py:148-156`
 
 ---
 

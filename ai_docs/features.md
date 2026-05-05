@@ -33,7 +33,7 @@
 1. Detecta o melhor microfone (respeita `AUDIO_DEVICE`), captura preferencial a 48kHz
 2. Para cada chunk: resample → bandpass → calcula energia (VAD)
 3. Quando energia > threshold: acumula chunks em `speech_buffer` (com pre-buffer de 0.3s)
-4. Ao detectar silêncio (`WHISPER_SILENCE_DURATION=0.8s`): transcreve buffer com Whisper (sem bandpass)
+4. Ao detectar silêncio (`WHISPER_SILENCE_DURATION=0.8s`): aplica `pre_emphasis_filter()` e transcreve com Whisper (sem bandpass, com pré-ênfase + `initial_prompt`)
 5. Checa wake word com fuzzy matching (75%) → entra estágio 2
 
 **Fluxo Vosk** (`CHUNK=4096`):
@@ -169,7 +169,7 @@ Loop contínuo:
 - **Modo pareamento** (`"carro modo de pareamento"`): Rock Pi fica visível e pareável por 60s → usuário conecta pelo celular (inicia a conexão pelo lado do celular) → Rock Pi detecta a conexão, salva o dispositivo (sobrescreve o anterior) → confirma "Dispositivo conectado e salvo."
 - **Conectar** (`"carro conectar"`): tenta conectar ao dispositivo salvo → "Dispositivo conectado." ou "Não foi possível achar o dispositivo."
 
-**Comportamento no boot**: O sistema NÃO tenta conectar automaticamente ao ligar. Aguarda comando de voz.
+**Comportamento no boot**: `autoconnect_boot()` tenta conectar silenciosamente ao dispositivo salvo na inicialização. Ver seção [Auto-connect Bluetooth no Boot](#auto-connect-bluetooth-no-boot).
 
 **Persistência**: `data/devices.json` — guarda apenas 1 dispositivo (o último pareado).
 
