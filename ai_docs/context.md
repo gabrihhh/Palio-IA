@@ -18,7 +18,7 @@ venv/bin/python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(f'[{i}]', p.get
 ## Arquitetura de Áudio
 
 ```
-[Mic USB] → PyAudio → resample_poly → Whisper/Vosk → texto
+[Mic USB] → PyAudio → resample_poly → Whisper → texto
                                                          ↓
                                                dispatcher de intenção
                                               /          |          \
@@ -37,23 +37,23 @@ O rádio do Palio **não** é pareado via Bluetooth — recebe áudio pelo cabo 
 
 ## Stack
 
-### STT — dois backends intercambiáveis
+### STT — faster-whisper
 
-| Backend | Precisão PT-BR | Latência (Rock Pi 4B) | CHUNK | Ativação |
-|---|---|---|---|---|
-| faster-whisper `small` | Alta (~460MB, auto-download) | ~2-4s | 1024 | `STT_BACKEND=whisper` (padrão) |
-| Vosk `vosk-model-pt-fb-v0.1.1` | Média (~2.6GB, download manual em `./model-ptbr/`) | ~0.5s | 4096 | `STT_BACKEND=vosk` |
+| Modelo | Precisão PT-BR | Latência (Rock Pi 4B) | CHUNK |
+|---|---|---|---|
+| `small` (padrão, ~460MB, auto-download) | Alta | ~2-4s | 1024 |
+| `medium` (~1.5GB) | Muito alta | ~5-8s | 1024 |
+| `large-v3` (~3GB) | Máxima | ~15-25s | 1024 |
 
-Latências Whisper estimadas no Rock Pi 4B: `small` ~2-4s | `medium` ~5-8s | `large-v3` ~15-25s
+Selecionar via `WHISPER_MODEL=medium` (ou `large-v3`).
 
-**Dois estágios + filtros**: ambos os backends usam arquitetura dois estágios (wake word separada do comando), filtro bandpass 300-3400Hz para VAD, captura preferencial a 48kHz. Ver `ai_docs/features.md` para detalhes.
+**Dois estágios + filtros**: arquitetura dois estágios (wake word separada do comando), filtro bandpass 300-3400Hz para VAD, pré-ênfase (coef=0.97) antes do modelo, `initial_prompt` com vocabulário do sistema. Ver `ai_docs/features.md` para detalhes.
 
 ### Bibliotecas Python
 
 | Lib | Versão | Propósito |
 |---|---|---|
 | `faster-whisper` | latest | STT padrão — transformer offline |
-| `vosk` | 0.3.45 | STT alternativo — menor latência |
 | `pyaudio` | 0.2.14 | Captura de microfone em tempo real |
 | `numpy` | 2.1.1 | Manipulação de arrays de áudio |
 | `scipy` | 1.15.1 | `resample_poly` — resampling 48kHz→16kHz (ratio 3:1 limpo, sem artefatos) |
@@ -103,10 +103,6 @@ pip install -r req.txt
 # Ativar git hooks (uma vez por clone)
 git config core.hooksPath .githooks
 
-# Modelo Vosk — apenas se STT_BACKEND=vosk
-# Baixar de https://alphacephei.com/vosk/models
-# Extrair como ./model-ptbr/
-
 # Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull llama3.2:3b
@@ -116,7 +112,6 @@ ollama pull llama3.2:3b
 
 | Componente | Falha | Comportamento |
 |---|---|---|
-| Modelo Vosk | Pasta `model-ptbr/` ausente | `exit(1)` com mensagem clara |
 | Microfone | Nenhum dispositivo encontrado | `exit(1)` |
 | Stream de áudio | Erro ao abrir | `exit(1)` |
 | Buffer overflow | Chunk descartado | `exception_on_overflow=False` — silencioso |

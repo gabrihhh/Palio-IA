@@ -3,18 +3,19 @@
 ## Funcionalidades Implementadas
 
 ### Reconhecimento de Voz Offline (STT)
-**Descrição**: Captura áudio contínuo do microfone e converte fala em texto localmente, sem depender de internet. Suporta dois backends intercambiáveis via `STT_BACKEND`.
+**Descrição**: Captura áudio contínuo do microfone e converte fala em texto localmente via faster-whisper, sem depender de internet.
 
-**Backends disponíveis**:
+**Modelos disponíveis** (via `WHISPER_MODEL`):
 
-| Backend | Variável | Precisão | Latência (notebook) | Latência (Rock Pi 4B) |
-|---|---|---|---|---|
-| faster-whisper `small` | `STT_BACKEND=whisper` (padrão) | Alta | ~1s | ~2-4s |
-| Vosk PT-BR | `STT_BACKEND=vosk` | Média | ~0.5s | ~0.5s |
+| Modelo | Precisão | Latência (notebook) | Latência (Rock Pi 4B) |
+|---|---|---|---|
+| `small` (padrão, ~460MB) | Alta | ~1s | ~2-4s |
+| `medium` (~1.5GB) | Muito alta | ~2s | ~5-8s |
+| `large-v3` (~3GB) | Máxima | ~4s | ~15-25s |
 
 **Componentes**:
-- `speech_to_text.py` — backend Vosk + funções compartilhadas (resample, fuzzy match, seleção de mic)
-- `modules/stt/whisper_backend.py` — backend Whisper com VAD por energia
+- `speech_to_text.py` — utilitários de áudio compartilhados (resample, bandpass, pré-ênfase, fuzzy match, seleção de mic)
+- `modules/stt/whisper_backend.py` — loop STT com VAD por energia
 - `PyAudio` — captura do microfone
 - `scipy.signal.resample_poly` — resampling para 16kHz (ratio limpo 3:1 a 48kHz)
 
@@ -27,7 +28,7 @@
 - Filtra áudio para faixa de voz humana (300–3400Hz)
 - Reduz bleeding de música tocando no carro
 - No Whisper: aplicado APENAS para cálculo de energia (VAD) — o áudio enviado ao modelo é raw resampled
-- No Vosk: aplicado antes do `KaldiRecognizer`
+
 
 **Fluxo Whisper** (`CHUNK=1024`):
 1. Detecta o melhor microfone (respeita `AUDIO_DEVICE`), captura preferencial a 48kHz
@@ -35,12 +36,6 @@
 3. Quando energia > threshold: acumula chunks em `speech_buffer` (com pre-buffer de 0.3s)
 4. Ao detectar silêncio (`WHISPER_SILENCE_DURATION=0.8s`): aplica `pre_emphasis_filter()` e transcreve com Whisper (sem bandpass, com pré-ênfase + `initial_prompt`)
 5. Checa wake word com fuzzy matching (75%) → entra estágio 2
-
-**Fluxo Vosk** (`CHUNK=4096`):
-1. Detecta microfone, captura preferencial a 48kHz
-2. Lê chunks em loop: resample_poly → bandpass → `KaldiRecognizer`
-3. Quando `AcceptWaveform()` retorna `True`, processa resultado final
-4. Checa wake word → entra estágio 2
 
 ---
 
@@ -284,13 +279,6 @@ Loop contínuo:
 ---
 
 ## Funcionalidades Planejadas
-
-### [MÉDIO] VAD (Voice Activity Detection) para o backend Vosk
-**Problema**: o backend Vosk processa áudio continuamente sem filtrar períodos de silêncio ou ruído de fundo (motor, rádio, conversa). Isso aumenta falsos positivos e consumo de CPU no Rock Pi. O Whisper já tem VAD por energia; o Vosk não.
-
-**O que fazer**: adaptar a lógica de VAD do `whisper_backend.py` para o loop Vosk em `speech_to_text.py` — usar `bandpass_filter()` + threshold de energia para só alimentar o `KaldiRecognizer` quando houver fala detectada.
-
----
 
 ### [GRANDE] Melhorar qualidade do TTS com piper-tts
 **Problema**: `espeak-ng` é funcional mas soa robótico. `piper-tts` tem modelos PT-BR offline com qualidade significativamente superior.

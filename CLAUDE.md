@@ -7,7 +7,7 @@ Assistente de voz embarcado num Fiat Palio. Roda no **Radxa ROCK 4B** (ARM64, De
 > Violar qualquer uma dessas quebra o sistema silenciosamente.
 
 - **100% offline** — zero dependência de internet; qualquer feature que exija rede está fora do escopo
-- **Áudio: 16kHz mono** — Vosk e Whisper exigem esse formato; microfone é resampleado automaticamente via `resample_poly`
+- **Áudio: 16kHz mono** — Whisper exige esse formato; microfone é resampleado automaticamente via `resample_poly`
 - **Wake word: `"carro"`** — sem ela, zero comandos executam; verificada por substring + fuzzy match (75%)
 - **Idioma: PT-BR** — STT, wake word, comandos, logs e TTS tudo em português
 - **Comparação normalizada** — acentos e case sempre ignorados em comparações de comandos (`verificar_palavra()`)
@@ -17,7 +17,7 @@ Assistente de voz embarcado num Fiat Palio. Roda no **Radxa ROCK 4B** (ARM64, De
 | Arquivo | Responsabilidade | Status |
 |---|---|---|
 | `main.py` | Orquestrador + TTS (pyttsx3+sounddevice) + loop principal | Funcional |
-| `speech_to_text.py` | STT backend Vosk + resample + bandpass 300-3400Hz + wake word + fuzzy match | Funcional |
+| `speech_to_text.py` | Utilitários de áudio: resample, bandpass, pré-ênfase, seleção de mic, fuzzy match | Funcional |
 | `modules/stt/whisper_backend.py` | STT backend Whisper com VAD por energia (bandpass só para VAD; pré-ênfase + initial_prompt para o modelo) | Funcional |
 | `modules/core/dispatcher.py` | Roteador: texto → [música \| pareamento \| LLM] | Funcional |
 | `modules/bluetooth/music.py` | AVRCP: próxima, anterior, pausa, play, info da faixa | Funcional |
@@ -31,7 +31,6 @@ Assistente de voz embarcado num Fiat Palio. Roda no **Radxa ROCK 4B** (ARM64, De
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `STT_BACKEND` | `whisper` | `whisper` ou `vosk` |
 | `AUDIO_DEVICE` | auto | índice do microfone (listar com PyAudio) |
 | `WHISPER_MODEL` | `small` | `small`, `medium`, `large-v3` |
 | `WHISPER_SILENCE_THRESHOLD` | `400` | amplitude mínima para considerar fala |
@@ -113,7 +112,7 @@ E atualizar `README.md` para qualquer mudança visível ao usuário final (featu
 
 | Data | Decisão | Motivo |
 |---|---|---|
-| 2026-05-05 | Whisper virou backend STT padrão; Vosk alternativo via `STT_BACKEND=vosk` | Vosk confundia "carro" com "carla"; Whisper tem precisão muito superior em PT-BR |
+| 2026-05-05 | Whisper é o único backend STT; Vosk removido | Vosk confundia "carro" com "carla"; Whisper tem precisão muito superior em PT-BR |
 | 2026-05-05 | Saída de áudio via cabo P2 3.5mm, não Bluetooth | O rádio do Palio não é BT-capable; celular conecta por A2DP no Rock Pi que repassa pelo cabo |
 | 2026-05-05 | GPS e chamadas telefônicas removidos do roadmap | GPS: complexidade alta sem definição de integração; HFP: requer hardware extra |
 | 2026-05-05 | PipeWire ao invés de PulseAudio | Suporte nativo a múltiplos perfis BT simultâneos (A2DP sink + source) |

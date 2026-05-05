@@ -1,7 +1,7 @@
 """
 modules/stt/whisper_backend.py — Backend STT usando faster-whisper.
 
-Ativado via: STT_BACKEND=whisper python main.py
+Ativado via: python main.py
 
 Arquitetura dois estágios:
   Estágio 1 — sempre ouvindo:
@@ -52,7 +52,6 @@ def iniciar_loop_stt(
     on_wake_word_cb: Optional[Callable[[], None]] = None,
     on_timeout_cb: Optional[Callable[[], None]] = None,
     wake_word: str = "carro",
-    model_path: str = "model-ptbr",
     debug: bool = False,
 ) -> None:
     """
@@ -63,7 +62,6 @@ def iniciar_loop_stt(
         on_wake_word_cb:  Chamado imediatamente ao detectar wake word (ex: duck volume).
         on_timeout_cb:    Chamado se estágio 2 expirar sem fala (ex: restaurar volume).
         wake_word:        Palavra de ativação (padrão: "carro").
-        model_path:       Não usado pelo Whisper (mantido para interface uniforme).
         debug:            Se True, imprime reconhecimentos em tempo real.
     """
     from faster_whisper import WhisperModel

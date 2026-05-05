@@ -14,7 +14,6 @@ Para rodar:
   python main.py
 
 Pré-requisitos:
-  - Modelo Vosk PT-BR em ./model-ptbr/
   - Ollama rodando: ollama serve && ollama pull llama3.2:3b  (opcional — TTS funciona sem)
   - Linux + bluez para controle Bluetooth  (opcional — mock usado em outros sistemas)
 """
@@ -27,12 +26,8 @@ import pyttsx3
 import sounddevice as sd
 import soundfile as sf
 
-_STT_BACKEND = os.environ.get("STT_BACKEND", "whisper").lower()
-if _STT_BACKEND == "whisper":
-    from modules.stt.whisper_backend import iniciar_loop_stt
-    from speech_to_text import verificar_palavra
-else:
-    from speech_to_text import iniciar_loop_stt, verificar_palavra
+from modules.stt.whisper_backend import iniciar_loop_stt
+from speech_to_text import verificar_palavra
 from modules.bluetooth.audio import create_volume_controller
 from modules.bluetooth.music import create_controller
 from modules.bluetooth.audio_duck import create_audio_duck
@@ -216,8 +211,6 @@ if __name__ == '__main__':
     if debug_mode:
         logging.getLogger().setLevel(logging.DEBUG)
         logger.info("Modo debug ativado — exibindo tudo que o STT reconhece.")
-
-    logger.info("Backend STT: %s", _STT_BACKEND)
 
     dispatcher, duck, volume = inicializar()
     on_comando, on_wake_word, on_timeout = criar_handler(dispatcher, duck, volume)

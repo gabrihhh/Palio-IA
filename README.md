@@ -9,9 +9,9 @@ Assistente de voz embarcado para um **Fiat Palio**, rodando em uma **Radxa Rock 
 Você fala **"carro"** seguido de um comando. O sistema reconhece sua voz, processa localmente e responde em voz alta. O áudio do celular entra via Bluetooth A2DP e sai pelo Rock Pi direto no rádio via cabo P2 (3.5mm).
 
 ```
-[Mic] → STT (Whisper ou Vosk) → Dispatcher → [Música / Bluetooth / LLM]
-                                                      ↓
-                                            espeak-ng (TTS) → saída P2 → [Rádio]
+[Mic] → faster-whisper → Dispatcher → [Música / Bluetooth / LLM]
+                                              ↓
+                                    espeak-ng (TTS) → saída P2 → [Rádio]
 
 [Celular] → BT A2DP → Rock Pi → cabo P2 → [Rádio]
 ```
@@ -25,8 +25,7 @@ Você fala **"carro"** seguido de um comando. O sistema reconhece sua voz, proce
 | Linguagem | Python 3.x |
 | Hardware | Radxa Rock Pi 4B — RK3399, ARM64 |
 | SO | Debian 12 Bookworm (CLI, sem desktop) |
-| STT — padrão | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (modelo `small`, PT-BR) |
-| STT — alternativo | [Vosk](https://alphacephei.com/vosk/) com modelo PT-BR (menor latência) |
+| STT | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (modelo `small`, PT-BR) |
 | TTS (texto → fala) | pyttsx3 + espeak-ng |
 | LLM | [Ollama](https://ollama.com/) com llama3.2:3b (local) |
 | Áudio — captura | PyAudio |
@@ -66,7 +65,7 @@ Todos os comandos começam com a wake word **"carro"**.
 | carro conectar | Conecta ao último celular salvo |
 
 ### Conversa
-Qualquer outro comando após "carro" é enviado ao LLM (Ollama). O assistente responde com a persona do próprio carro Palio — direto, informal, humor seco.
+Qualquer outro comando após "carro" é enviado ao LLM (Ollama). O assistente responde com a persona do próprio carro Palio — direto, informal, humor seco. O Palio aprende o nome do dono e preferências ao longo do tempo via `data/brain.md`.
 
 ---
 
@@ -98,29 +97,11 @@ pip install -r req.txt
 
 > O `--system-site-packages` é obrigatório para acessar o `python3-dbus` instalado via apt.
 
-### 3. Modelo de voz Vosk PT-BR (backend alternativo)
-
-Necessário apenas se usar `STT_BACKEND=vosk`. Baixe em [alphacephei.com/vosk/models](https://alphacephei.com/vosk/models) e extraia na raiz como `model-ptbr/`:
-
-| Modelo | Tamanho | Indicado para |
-|---|---|---|
-| `vosk-model-small-pt-0.3` | ~30 MB | Deploy no Rock Pi (baixa latência) |
-| `vosk-model-pt-fb-v0.1.1-20220516_2113` | ~2.6 GB | Maior precisão |
-
-```
-Palio-IA/
-└── model-ptbr/
-    ├── am/
-    ├── conf/
-    ├── graph/
-    └── ...
-```
-
-### 4. Modelo Whisper (backend padrão)
+### 3. Modelo Whisper
 
 O modelo `small` (~460MB) é baixado automaticamente na primeira execução pelo `faster-whisper`.
 
-### 5. Ollama (LLM local)
+### 4. Ollama (LLM local)
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
@@ -134,22 +115,14 @@ ollama serve
 
 ## Como rodar
 
-### Padrão (Whisper)
-
 ```bash
-AUDIO_DEVICE=2 venv/bin/python3 main.py
+venv/bin/python3 main.py
 ```
 
 ### Com debug (mostra tudo que o STT reconhece)
 
 ```bash
-AUDIO_DEVICE=2 venv/bin/python3 main.py --debug
-```
-
-### Com backend Vosk (menor latência)
-
-```bash
-AUDIO_DEVICE=2 STT_BACKEND=vosk venv/bin/python3 main.py
+venv/bin/python3 main.py --debug
 ```
 
 O sistema toca dois bipes ao iniciar e fica aguardando a wake word **"carro"**.
@@ -158,10 +131,9 @@ O sistema toca dois bipes ao iniciar e fica aguardando a wake word **"carro"**.
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `AUDIO_DEVICE` | auto | Índice do microfone (use `python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(i, p.get_device_info_by_index(i)['name']) for i in range(p.get_device_count()) if p.get_device_info_by_index(i)['maxInputChannels']>0]"` para listar) |
-| `STT_BACKEND` | `whisper` | Backend STT: `whisper` ou `vosk` |
+| `AUDIO_DEVICE` | auto | Índice do microfone (listar: `python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(i, p.get_device_info_by_index(i)['name']) for i in range(p.get_device_count()) if p.get_device_info_by_index(i)['maxInputChannels']>0]"`) |
 | `WHISPER_MODEL` | `small` | Modelo Whisper: `small`, `medium`, `large-v3` |
-| `WHISPER_SILENCE_THRESHOLD` | `400` | Limiar de amplitude para detectar silêncio (ajuste para ambientes ruidosos) |
+| `WHISPER_SILENCE_THRESHOLD` | `400` | Limiar de amplitude para detectar silêncio |
 | `WHISPER_SILENCE_DURATION` | `0.8` | Segundos de silêncio para encerrar utterance |
 
 ---
@@ -171,23 +143,23 @@ O sistema toca dois bipes ao iniciar e fica aguardando a wake word **"carro"**.
 ```
 Palio-IA/
 ├── main.py                        # Entry point — orquestrador principal
-├── speech_to_text.py              # STT: Vosk + PyAudio + wake word + fuzzy matching
+├── speech_to_text.py              # Utilitários de áudio: resample, VAD, seleção de mic
 ├── modules/
 │   ├── core/
 │   │   └── dispatcher.py          # Roteador de intenções
 │   ├── stt/
-│   │   └── whisper_backend.py     # Backend STT alternativo (faster-whisper + VAD)
+│   │   └── whisper_backend.py     # STT: faster-whisper + VAD por energia
 │   ├── bluetooth/
 │   │   ├── music.py               # Controle de música via AVRCP (dbus)
 │   │   ├── pairing.py             # Pareamento e conexão Bluetooth por voz
 │   │   ├── audio_duck.py          # Duck de áudio (baixa volume na wake word)
 │   │   └── audio.py               # Controle de volume por voz
 │   └── llm/
-│       ├── client.py              # Cliente Ollama (HTTP REST)
+│       ├── client.py              # Cliente Ollama + memória persistente (brain.md)
 │       └── persona.py             # System prompt — persona Palio
 ├── data/
-│   └── devices.json               # Dispositivo Bluetooth salvo (1 por vez)
-├── model-ptbr/                    # Modelo Vosk PT-BR (não versionado)
+│   ├── devices.json               # Dispositivo Bluetooth salvo (1 por vez)
+│   └── brain.md                   # Memória persistente do Palio (nome, preferências)
 ├── ai_docs/                       # Documentação técnica interna
 ├── req.txt                        # Dependências Python
 └── CLAUDE.md                      # Instruções para o Claude Code
@@ -210,4 +182,4 @@ O Rock Pi age como **sink A2DP** (recebe áudio do celular). A saída vai direto
 
 ## Versão atual
 
-**v0.3.0**
+**v0.4.0**
