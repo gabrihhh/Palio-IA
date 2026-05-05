@@ -36,6 +36,7 @@ else:
 from modules.bluetooth.audio import create_volume_controller
 from modules.bluetooth.music import create_controller
 from modules.bluetooth.audio_duck import create_audio_duck
+from modules.bluetooth.pairing import autoconnect_boot
 from modules.llm.client import OllamaClient
 from modules.core.dispatcher import Dispatcher
 
@@ -113,6 +114,8 @@ def falar(texto: str) -> None:
 def inicializar() -> tuple[Dispatcher, object, object]:
     """Inicializa todos os módulos e retorna o Dispatcher, AudioDuck e VolumeController."""
     logger.info("Inicializando Palio-IA...")
+
+    autoconnect_boot()
 
     bt = create_controller()
     if bt.connected:

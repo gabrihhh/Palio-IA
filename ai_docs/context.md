@@ -85,7 +85,7 @@ Latências Whisper estimadas no Rock Pi 4B: `small` ~2-4s | `medium` ~5-8s | `la
 - **A2DP**: recebe stream de áudio do celular (Rock Pi age como sink/destino)
 - **AVRCP**: controla player do celular (next, prev, pause, play, metadata)
 - **Pareamento**: Rock Pi fica visível por 60s → celular inicia a conexão → Rock Pi detecta e salva em `data/devices.json` (apenas 1 device)
-- **Boot**: sem auto-connect; aguarda comando `"carro conectar"`
+- **Boot**: tenta auto-connect silencioso ao dispositivo salvo; se falhar, aguarda `"carro conectar"`
 - **Requer**: `python3-dbus` via apt; venv criado com `--system-site-packages`
 
 ## Setup Completo

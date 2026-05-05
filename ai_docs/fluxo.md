@@ -4,7 +4,8 @@ Diagrama completo do fluxo de execução do assistente de voz, do boot à respos
 
 ```mermaid
 flowchart TD
-    BOOT([Inicialização\nmain.py]) --> BIPES["Dois bipes de boot\ntocar_boot()"]
+    BOOT([Inicialização\nmain.py]) --> AUTOCON["autoconnect_boot()\ntenta conectar dispositivo salvo\nsilenciosamente"]
+    AUTOCON --> BIPES["Dois bipes de boot\ntocar_boot()"]
     BIPES --> S1_CAP
 
     subgraph S1["Estágio 1 — Escuta contínua"]
@@ -15,7 +16,7 @@ flowchart TD
         S1_VAD -- Sim --> S1_STT["Acumula buffer de fala\npre-buffer 0.3s"]
         S1_STT --> S1_SIL{Silêncio\n≥ 0.8s?}
         S1_SIL -- Não --> S1_STT
-        S1_SIL -- Sim --> S1_TRANS["Transcreve utterance\nfaster-whisper small"]
+        S1_SIL -- Sim --> S1_TRANS["Pré-ênfase + Transcreve utterance\nfaster-whisper small · initial_prompt"]
         S1_TRANS --> S1_WW{Contém wake word\n'carro'?\nsubstring + fuzzy ≥75%}
         S1_WW -- Não --> S1_CAP
     end

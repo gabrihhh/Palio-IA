@@ -321,6 +321,38 @@ class PairingManager:
 
 
 # ---------------------------------------------------------------------------
+# Auto-connect no boot
+# ---------------------------------------------------------------------------
+
+def autoconnect_boot() -> bool:
+    """
+    Tenta conectar silenciosamente ao dispositivo salvo no boot.
+
+    Não fala nada — falhas são situação normal (celular desligado, fora de alcance).
+    Retorna True se conectou, False caso contrário.
+    """
+    device = _carregar_device()
+    if device is None:
+        logger.info("Auto-connect: nenhum dispositivo salvo, pulando.")
+        return False
+
+    if not _is_linux():
+        return False
+
+    logger.info("Auto-connect: tentando conectar a '%s' (%s)...", device.apelido, device.mac)
+    ok = _bt_connect(device.mac)
+
+    if ok:
+        device.touch()
+        _salvar_device(device)
+        logger.info("Auto-connect: conectado a '%s'.", device.apelido)
+    else:
+        logger.info("Auto-connect: '%s' não encontrado, aguardando comando manual.", device.apelido)
+
+    return ok
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 

@@ -50,6 +50,19 @@ def verificar_palavra(frase: str, palavra: str, limiar: float = 0.75) -> bool:
     return False
 
 
+def pre_emphasis_filter(audio: np.ndarray, coef: float = 0.97) -> np.ndarray:
+    """Realça frequências altas (consoantes, fricativas) para melhorar transcrição STT.
+
+    Amplifica diferenças entre samples adjacentes, tornando fonemas como
+    'r', 's', 'c' mais distintos. Aplicar ao áudio float32 antes de enviar ao modelo.
+    Coeficiente padrão 0.97 é o valor clássico para pré-ênfase de fala.
+    """
+    if len(audio) < 2:
+        return audio
+    emphasized = np.concatenate([[audio[0]], audio[1:] - coef * audio[:-1]])
+    return emphasized.astype(audio.dtype)
+
+
 def bandpass_filter(audio: np.ndarray, sample_rate: int, low_hz: int = 300, high_hz: int = 3400) -> np.ndarray:
     """Filtra o áudio para a faixa de voz humana (300–3400Hz).
 
@@ -84,10 +97,18 @@ def carregar_modelo(model_path: str) -> vosk.Model:
     return model
 
 
-def get_best_microphone(p: pyaudio.PyAudio, target_rate: int) -> tuple[int, int]:
-    """Encontra o microfone com a taxa de amostragem mais próxima do target_rate.
+# Nomes de dispositivos virtuais que devem ter menor prioridade que hardware real
+_VIRTUAL_DEVICE_NAMES = {"pulse", "pipewire", "default", "sysdefault"}
 
-    Se a variável de ambiente AUDIO_DEVICE estiver definida, usa o índice especificado.
+
+def get_best_microphone(p: pyaudio.PyAudio, target_rate: int) -> tuple[int, int]:
+    """Seleciona o melhor microfone disponível com prioridades:
+
+    1. Se AUDIO_DEVICE estiver definido, usa o índice especificado diretamente.
+    2. Descarta dispositivos Monitor (loopback de saída — nunca são microfones).
+    3. Prefere hardware real sobre dispositivos virtuais (pulse, pipewire, default).
+    4. Dentro de cada grupo, escolhe pelo defaultSampleRate mais próximo de target_rate.
+    5. Se só sobrarem virtuais, usa o melhor entre eles.
     """
     env_device = os.environ.get("AUDIO_DEVICE")
     if env_device is not None:
@@ -108,28 +129,42 @@ def get_best_microphone(p: pyaudio.PyAudio, target_rate: int) -> tuple[int, int]
             logger.error("AUDIO_DEVICE inválido: %s", e)
             raise SystemExit(1)
 
-    best_device_index = None
+    hardware: list[tuple[int, int, str]] = []   # (index, rate, name)
+    virtual: list[tuple[int, int, str]] = []
 
     for i in range(p.get_device_count()):
-        device_info = p.get_device_info_by_index(i)
-        if int(device_info['maxInputChannels']) > 0:
-            rate = int(device_info.get('defaultSampleRate', 0))
-            logger.debug("Dispositivo %d: %s, Taxa: %d Hz", i, device_info['name'], rate)
-            if best_device_index is None or abs(rate - target_rate) < abs(
-                    int(p.get_device_info_by_index(best_device_index)['defaultSampleRate']) - target_rate):
-                best_device_index = i
+        info = p.get_device_info_by_index(i)
+        if int(info['maxInputChannels']) == 0:
+            continue
+        name = info['name']
+        rate = int(info.get('defaultSampleRate', 0))
+        name_lower = name.lower()
 
-    if best_device_index is None:
+        # Monitor = loopback de saída de áudio, nunca um microfone
+        if 'monitor' in name_lower:
+            logger.debug("Ignorando Monitor: %s", name)
+            continue
+
+        logger.debug("Candidato %d: %s (%d Hz)", i, name, rate)
+
+        if any(v == name_lower for v in _VIRTUAL_DEVICE_NAMES):
+            virtual.append((i, rate, name))
+        else:
+            hardware.append((i, rate, name))
+
+    pool = hardware if hardware else virtual
+
+    if not pool:
         logger.error("Nenhum microfone encontrado.")
         raise SystemExit(1)
 
-    device_info = p.get_device_info_by_index(best_device_index)
-    logger.info(
-        "Microfone selecionado: %s (%d Hz)",
-        device_info['name'],
-        int(device_info['defaultSampleRate']),
-    )
-    return best_device_index, int(device_info['defaultSampleRate'])
+    best_index, best_rate, best_name = min(pool, key=lambda x: abs(x[1] - target_rate))
+
+    if not hardware:
+        logger.warning("Nenhum hardware de microfone encontrado; usando dispositivo virtual.")
+
+    logger.info("Microfone selecionado: %s (%d Hz)", best_name, best_rate)
+    return best_index, best_rate
 
 
 def iniciar_loop_stt(

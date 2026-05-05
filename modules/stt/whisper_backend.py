@@ -24,7 +24,7 @@ from typing import Callable, Optional
 import numpy as np
 import pyaudio
 
-from speech_to_text import get_best_microphone, resample_audio, verificar_palavra, bandpass_filter
+from speech_to_text import get_best_microphone, resample_audio, verificar_palavra, bandpass_filter, pre_emphasis_filter
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,14 @@ _SILENCE_DURATION = float(os.environ.get("WHISPER_SILENCE_DURATION", "0.8"))
 _PRE_SPEECH_SECS = 0.3
 _DUCK_WAIT = 0.4
 _COMMAND_TIMEOUT = 5.0
+
+# Prompt de contexto injetado em toda transcrição Whisper.
+# Envieса o modelo para o vocabulário real do sistema, reduzindo erros fonéticos
+# (ex: "carro" → "karo", "mão" → "são").
+_INITIAL_PROMPT = (
+    "Comandos do carro: carro, próxima, música anterior, pausa, para, toca, play, "
+    "aumenta o volume, diminui o volume, conectar, modo de pareamento."
+)
 
 
 def _reset_vad():
@@ -140,12 +148,20 @@ def iniciar_loop_stt(
                     speech_buffer.append(chunk)
 
                     if silence_chunks >= silence_limit:
-                        # Transcreve utterance completo (sem bandpass — Whisper performa melhor)
+                        # Transcreve utterance completo
                         audio = np.concatenate(speech_buffer)
                         audio_16k = resample_audio(audio, capture_rate, SAMPLE_RATE)
                         audio_float = audio_16k.astype(np.float32) / 32768.0
 
-                        segments, _ = model.transcribe(audio_float, language="pt", beam_size=5)
+                        # Pré-ênfase: realça consoantes e fricativas antes do Whisper
+                        audio_float = pre_emphasis_filter(audio_float)
+
+                        segments, _ = model.transcribe(
+                            audio_float,
+                            language="pt",
+                            beam_size=5,
+                            initial_prompt=_INITIAL_PROMPT,
+                        )
                         text = " ".join(s.text for s in segments).strip()
 
                         if text:

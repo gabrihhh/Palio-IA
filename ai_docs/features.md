@@ -50,14 +50,13 @@
 **Componentes Envolvidos**: `speech_to_text.py` — função `get_best_microphone()`
 
 **Comportamento**:
-- Se `AUDIO_DEVICE=N` estiver definido, usa o dispositivo N diretamente (sem auto-seleção)
-- Caso contrário, auto-seleciona por proximidade de taxa com 16kHz
-- Se nenhum microfone for encontrado, encerra com `exit(1)`
-
-**Listar dispositivos disponíveis**:
-```bash
-AUDIO_DEVICE=2 venv/bin/python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(f'[{i}]', p.get_device_info_by_index(i)['name']) for i in range(p.get_device_count()) if p.get_device_info_by_index(i)['maxInputChannels']>0]; p.terminate()"
-```
+- Se `AUDIO_DEVICE=N` estiver definido, usa o dispositivo N diretamente (override manual)
+- Caso contrário, auto-seleção inteligente com prioridades:
+  1. Descarta dispositivos Monitor (loopback de saída)
+  2. Prefere hardware real sobre virtuais (`pulse`, `pipewire`, `default`, `sysdefault`)
+  3. Dentro de cada grupo, escolhe pelo `defaultSampleRate` mais próximo de 16kHz
+  4. Se só sobrarem virtuais, usa o melhor entre eles
+- Se nenhum microfone encontrado, encerra com `exit(1)`
 
 ---
 
@@ -202,6 +201,70 @@ Loop contínuo:
 
 ---
 
+### Memória Persistente (brain.md)
+**Descrição**: O LLM pode salvar informações sobre o dono entre sessões. O histórico de conversa some ao desligar o carro, mas o brain persiste em disco.
+
+**Componentes Envolvidos**: `modules/llm/client.py`, `modules/llm/persona.py` (`MEMORY_INSTRUCTIONS`), `data/brain.md`
+
+**Campos do brain.md**:
+- `nome_dono` — primeiro nome do dono (uma linha)
+- `notas` — lista livre de até 5 itens; ao atingir o limite, o mais antigo é descartado
+
+**Mecanismo** — tag inline na resposta do LLM:
+- `[MEMO: nome=Gabriel]` → salva nome do dono
+- `[MEMO: nota=Gosta de rock]` → adiciona nota
+- O `OllamaClient.chat()` extrai as tags antes de passar o texto para o TTS — elas são invisíveis para o usuário
+- O LLM aprende quando usar as tags via `MEMORY_INSTRUCTIONS` no system prompt
+
+**Fluxo no boot**:
+1. `OllamaClient.__init__()` chama `_build_system_prompt()`
+2. `_load_brain()` lê `data/brain.md`
+3. Prompt composto = `SYSTEM_PROMPT` + `MEMORY_INSTRUCTIONS` + conteúdo do brain
+
+**Regras de uso (instruídas ao LLM)**:
+- Só salva nome quando o dono se apresentar ou confirmar
+- Notas: apenas o que muda a forma de conversar (estilo, preferências, fatos marcantes)
+- Nunca menciona a tag em voz alta
+
+---
+
+### Auto-connect Bluetooth no Boot
+**Descrição**: Ao inicializar, o sistema tenta conectar silenciosamente ao dispositivo salvo em `data/devices.json`. Não fala nada independente do resultado — falhar é situação normal (celular desligado ou fora de alcance).
+
+**Componentes Envolvidos**: `modules/bluetooth/pairing.py` → `autoconnect_boot()`, `main.py` → `inicializar()`
+
+**Comportamento**:
+- Sem dispositivo salvo → retorna sem fazer nada
+- Com dispositivo salvo → tenta `_bt_connect(mac)` e loga o resultado
+- Sucesso → atualiza `last_connected` em `devices.json`
+- `"carro conectar"` continua funcionando como fallback manual
+
+---
+
+### Melhorias de Precisão STT (Whisper)
+**Descrição**: Duas melhorias aplicadas ao pipeline Whisper para reduzir erros fonéticos (ex: "carro" → "karo", "mão" → "são").
+
+**Componentes Envolvidos**: `speech_to_text.py` → `pre_emphasis_filter()`, `modules/stt/whisper_backend.py`
+
+**Melhorias**:
+- **Filtro de pré-ênfase** (`pre_emphasis_filter()`, coef=0.97): realça consoantes e fricativas antes da transcrição, tornando fonemas similares mais distinguíveis
+- **`initial_prompt`**: vocabulário real do sistema injetado em toda chamada `model.transcribe()` — enviesa o modelo para os comandos conhecidos, reduzindo erros de transcrição fora do vocabulário esperado
+
+---
+
+### Seleção Inteligente de Microfone
+**Descrição**: `get_best_microphone()` prioriza hardware USB real sobre dispositivos virtuais do PipeWire, evitando seleção acidental de loopbacks ou dispositivos genéricos.
+
+**Componentes Envolvidos**: `speech_to_text.py` → `get_best_microphone()`
+
+**Prioridades**:
+1. `AUDIO_DEVICE=N` (override manual)
+2. Descarta `Monitor` (loopback de saída)
+3. Prefere hardware sobre virtuais (`pulse`, `pipewire`, `default`, `sysdefault`)
+4. Desempate por taxa mais próxima de 16kHz
+
+---
+
 ### Controle de Volume por Voz
 **Descrição**: Ajusta o volume do sink padrão do PipeWire via `pactl` por comandos de voz.
 
@@ -222,27 +285,6 @@ Loop contínuo:
 
 ## Funcionalidades Planejadas
 
-### [PEQUENO] Comando de voz para resetar histórico da conversa
-**Problema**: `OllamaClient.reset_history()` existe (`client.py:122`) mas não há nenhum comando de voz conectado a ele. O usuário não consegue limpar o contexto da conversa sem reiniciar o sistema.
-
-**O que fazer**: adicionar intenção `"esquece"` / `"nova conversa"` / `"reseta"` no dispatcher (`dispatcher.py`) que chame `llm.reset_history()` e retorne algo como `"Pronto, esqueci tudo. Pode começar."`.
-
----
-
-### [PEQUENO] `AUDIO_DEVICE` no serviço systemd
-**Problema**: `palio-ia.service` não define `AUDIO_DEVICE`. No Rock Pi com múltiplos dispositivos de áudio (HDMI, analógico, USB), a auto-seleção pode escolher o dispositivo errado.
-
-**O que fazer**: após identificar o índice correto do microfone no Rock Pi real, adicionar `Environment="AUDIO_DEVICE=N"` no `palio-ia.service` (e atualizar o `palio-ia.service` na raiz para referência).
-
----
-
-### [MÉDIO] Auto-connect Bluetooth no boot
-**Problema**: o usuário precisa dizer `"carro conectar"` toda vez que liga o carro. O sistema não tenta conectar ao dispositivo salvo automaticamente.
-
-**Decisão pendente**: verificar se isso é realmente irritante no uso real antes de implementar — pode ser que o usuário prefira controle explícito. Se implementar, adicionar tentativa de conexão silenciosa em `main.py` durante `inicializar()`, após o boot sound, usando `pairing.conectar()`. Não falar nada se falhar (celular pode estar desligado).
-
----
-
 ### [MÉDIO] VAD (Voice Activity Detection) para o backend Vosk
 **Problema**: o backend Vosk processa áudio continuamente sem filtrar períodos de silêncio ou ruído de fundo (motor, rádio, conversa). Isso aumenta falsos positivos e consumo de CPU no Rock Pi. O Whisper já tem VAD por energia; o Vosk não.
 
@@ -254,13 +296,6 @@ Loop contínuo:
 **Problema**: `espeak-ng` é funcional mas soa robótico. `piper-tts` tem modelos PT-BR offline com qualidade significativamente superior.
 
 **O que fazer**: instalar `piper-tts`, baixar um modelo PT-BR (ex: `pt_BR-faber-medium`), substituir a função `falar()` em `main.py` para usar piper em vez de pyttsx3+espeak-ng. Manter espeak-ng como fallback. Avaliar latência no Rock Pi 4B antes de adotar como padrão.
-
----
-
-### [MÉDIO] Expor status do `BluetoothAudioController`
-**Problema**: `audio.py` tem `BluetoothAudioController` completo (lista dispositivos BT, verifica loopback PipeWire, status de conexão) mas nunca é instanciado nem usado. Só `VolumeController` é usado.
-
-**O que fazer**: decidir se esse status é útil — por exemplo, um comando `"carro status"` que fale o estado atual (celular conectado ou não, loopback ativo). Se não for necessário, remover a classe para reduzir código morto.
 
 ---
 
