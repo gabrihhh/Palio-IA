@@ -12,7 +12,7 @@ Assistente de voz embarcado para um **Fiat Palio**, rodando em uma **Radxa Rock 
 | Hardware | Radxa Rock Pi 4B — RK3399, ARM64 |
 | SO | Debian 12 Bookworm (CLI, sem desktop) |
 | STT | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (modelo `small`, PT-BR) |
-| TTS (texto → fala) | [piper-tts](https://github.com/OHF-Voice/piper1-gpl) + modelo `pt_BR-faber-medium` |
+| TTS (texto → fala) | [piper-tts](https://github.com/OHF-Voice/piper1-gpl) + modelo `pt_BR-cadu-medium` |
 | LLM | [Ollama](https://ollama.com/) com llama3.2:3b (local) |
 | Áudio — captura | PyAudio |
 | Áudio — reprodução | sounddevice + soundfile |

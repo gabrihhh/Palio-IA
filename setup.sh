@@ -89,9 +89,6 @@ apt install -y \
     portaudio19-dev \
     libportaudio2 \
     libportaudiocpp0 \
-    espeak-ng \
-    espeak-ng-data \
-    libespeak-ng-dev \
     bluez \
     bluez-tools \
     pipewire \
@@ -101,12 +98,6 @@ apt install -y \
     libspa-0.2-bluetooth \
     alsa-utils \
     libasound2-dev
-
-# Garante que espeak é encontrado pelo pyttsx3
-if ! command -v espeak &> /dev/null; then
-    ln -sf /usr/bin/espeak-ng /usr/local/bin/espeak
-    log "Symlink espeak → espeak-ng criado."
-fi
 
 log "Dependências do sistema instaladas."
 
@@ -127,31 +118,7 @@ python3 -m venv --system-site-packages "$VENV_DIR"
 log "Venv criado em $VENV_DIR."
 
 # =============================================================================
-# 5. Modelo de voz Vosk PT-BR
-# =============================================================================
-section "Baixando modelo de voz Vosk PT-BR"
-
-VOSK_DIR="$PROJECT_DIR/model-ptbr"
-VOSK_URL="https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip"
-VOSK_ZIP="/tmp/vosk-model-pt.zip"
-
-if [[ -d "$VOSK_DIR" ]]; then
-    warn "Modelo Vosk já existe em $VOSK_DIR — pulando download."
-else
-    log "Baixando modelo (~31 MB)..."
-    wget -q --show-progress -O "$VOSK_ZIP" "$VOSK_URL"
-
-    log "Extraindo modelo..."
-    unzip -q "$VOSK_ZIP" -d /tmp/vosk-extract
-    mv /tmp/vosk-extract/vosk-model-small-pt-0.3 "$VOSK_DIR"
-    rm -f "$VOSK_ZIP"
-    rm -rf /tmp/vosk-extract
-
-    log "Modelo Vosk instalado em $VOSK_DIR."
-fi
-
-# =============================================================================
-# 6. Ollama + modelo LLM
+# 5. Ollama + modelo LLM
 # =============================================================================
 section "Instalando Ollama"
 
@@ -183,7 +150,7 @@ wait $OLLAMA_PID 2>/dev/null || true
 log "Ollama configurado."
 
 # =============================================================================
-# 7. Configurar Bluetooth
+# 6. Configurar Bluetooth
 # =============================================================================
 section "Configurando Bluetooth"
 
@@ -205,7 +172,7 @@ systemctl enable bluetooth
 systemctl restart bluetooth
 
 # =============================================================================
-# 8. Serviço systemd (boot automático)
+# 7. Serviço systemd (boot automático)
 # =============================================================================
 section "Configurando serviços systemd"
 
@@ -265,7 +232,7 @@ systemctl enable palio-ia.service
 log "Serviços systemd configurados."
 
 # =============================================================================
-# 9. Configuração de áudio (PipeWire + Bluetooth A2DP sink + P2)
+# 8. Configuração de áudio (PipeWire + Bluetooth A2DP sink + P2)
 # =============================================================================
 section "Configurando áudio (PipeWire + P2)"
 
@@ -291,7 +258,6 @@ echo -e "${GREEN}Tudo instalado com sucesso. Resumo:${NC}"
 echo ""
 echo -e "  Projeto:         $PROJECT_DIR"
 echo -e "  Venv:            $VENV_DIR"
-echo -e "  Modelo Vosk:     $VOSK_DIR"
 echo -e "  Modelo LLM:      llama3.2:3b (via Ollama)"
 echo -e "  Boot automático: palio-ia.service + ollama.service (systemd)"
 echo -e "  Áudio:           PipeWire A2DP sink → saída P2"

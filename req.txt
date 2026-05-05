@@ -1,6 +1,6 @@
 faster-whisper
 PyAudio==0.2.14
-numpy==2.1.1
+numpy==2.2.6
 scipy==1.15.1
 piper-tts
 onnxruntime

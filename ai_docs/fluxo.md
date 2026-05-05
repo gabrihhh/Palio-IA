@@ -47,7 +47,7 @@ flowchart TD
     LLM --> CLEAN["_limpar_markdown()\nremove ** # ` bullets\nmain.py"]
     CLEAN --> TTS
 
-    TTS["TTS\npyttsx3 + espeak-ng\nsounddevice · output.wav\nmain.py · falar()"] --> RESTORE["Restaura volume\non_done() · pactl"]
+    TTS["TTS\npiper-tts ONNX (pt_BR-cadu-medium)\nsounddevice · tempfile WAV\nmain.py · falar()"] --> RESTORE["Restaura volume\non_done() · pactl"]
     RESTORE --> VPEND_CHECK{Volume\npendente?}
     VPEND_CHECK -- Não --> S1_CAP
     VPEND --> VPEND_CHECK
@@ -67,4 +67,4 @@ flowchart TD
 | `modules/bluetooth/audio.py` | Controla volume do sink padrão via pactl |
 | `modules/bluetooth/audio_duck.py` | Duck 20% na wake word, restaura após TTS |
 | `modules/llm/client.py` | Chat multi-turno com Ollama local |
-| `speech_to_text.py` | Funções compartilhadas: resample, bandpass, fuzzy match, backend Vosk |
+| `speech_to_text.py` | Funções compartilhadas: resample, bandpass, pré-ênfase, fuzzy match, seleção de mic |
