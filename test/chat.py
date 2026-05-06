@@ -36,7 +36,7 @@ from piper import PiperVoice
 from modules.llm.client import OllamaClient
 from modules.stt.whisper_backend import iniciar_loop_stt
 
-PIPER_MODEL = os.getenv("PIPER_MODEL", os.path.join(_PROJECT_ROOT, "models", "pt_BR-cadu-medium.onnx"))
+PIPER_MODEL = os.getenv("PIPER_MODEL", os.path.join(_PROJECT_ROOT, "models", "pt_BR-faber-medium.onnx"))
 
 
 def _limpar_markdown(texto: str) -> str:

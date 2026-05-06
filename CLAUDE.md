@@ -35,7 +35,7 @@ Assistente de voz embarcado num Fiat Palio. Roda no **Radxa ROCK 4B** (ARM64, De
 | `WHISPER_MODEL` | `small` | `small`, `medium`, `large-v3` |
 | `WHISPER_SILENCE_THRESHOLD` | `400` | amplitude mínima para considerar fala |
 | `WHISPER_SILENCE_DURATION` | `0.8` | segundos de silêncio para encerrar utterance |
-| `PIPER_MODEL` | `models/pt_BR-cadu-medium.onnx` | caminho do modelo ONNX do piper-tts (relativo ao `main.py`) |
+| `PIPER_MODEL` | `models/pt_BR-faber-medium.onnx` | caminho do modelo ONNX do piper-tts (relativo ao `main.py`) |
 
 ## Fluxo Principal
 

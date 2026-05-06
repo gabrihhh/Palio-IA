@@ -24,7 +24,7 @@ import sounddevice as sd
 import soundfile as sf
 from piper import PiperVoice
 
-PIPER_MODEL = os.getenv("PIPER_MODEL", os.path.join(_PROJECT_ROOT, "models", "pt_BR-cadu-medium.onnx"))
+PIPER_MODEL = os.getenv("PIPER_MODEL", os.path.join(_PROJECT_ROOT, "models", "pt_BR-faber-medium.onnx"))
 
 
 def main():

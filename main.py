@@ -50,7 +50,7 @@ WAKE_WORD = "carro"
 
 # --- TTS: modelo piper ---
 _BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-PIPER_MODEL = os.getenv('PIPER_MODEL', os.path.join(_BASE_DIR, 'models', 'pt_BR-cadu-medium.onnx'))
+PIPER_MODEL = os.getenv('PIPER_MODEL', os.path.join(_BASE_DIR, 'models', 'pt_BR-faber-medium.onnx'))
 
 
 # --- Utilitário TTS ---
