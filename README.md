@@ -139,10 +139,13 @@ Fazer pull e copiar os arquivos do modelo:
 ```bash
 ollama pull llama3.2:3b
 
-# Copiar para a pasta do pendrive
-# ~/.ollama/models/ contém subpastas manifests/ e blobs/ (o modelo em si)
-cp -r ~/.ollama/models Palio-IA/pendrive/ollama/models
+# O install.sh cria um usuário de sistema 'ollama' — modelos ficam em /usr/share/ollama
+# Copiar para a pasta do pendrive (requer sudo)
+mkdir -p Palio-IA/pendrive/ollama/models
+sudo cp -r /usr/share/ollama/.ollama/models/. Palio-IA/pendrive/ollama/models/
 ```
+
+> `manifests/` e `blobs/` (~2 GB) devem aparecer dentro de `pendrive/ollama/models/`.
 
 ---
 
