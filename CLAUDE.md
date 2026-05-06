@@ -133,3 +133,4 @@ Todos respeitam as mesmas env vars do sistema (`PIPER_MODEL`, `WHISPER_MODEL`, e
 | 2026-05-05 | Ollama em vez de rodar modelo diretamente | Gerencia ciclo de vida do modelo, mantém em memória entre calls, troca de modelo sem alterar código |
 | 2026-05-05 | piper-tts (OHF-Voice) substituiu pyttsx3+espeak-ng | espeak-ng é formântico (robótico); piper usa ONNX neural PT-BR com qualidade muito superior. Instalação offline via wheel ARM64 + modelo .onnx |
 | 2026-05-05 | `falar()` como closure em `inicializar()` | Carrega modelo uma vez no boot; mantém assinatura `Callable[[str], None]` sem quebrar PairingManager/Dispatcher |
+| 2026-05-06 | Persona não é "o espírito do carro" — é assistente integrado | Evita invenção de specs (ano, motor, cor) que o LLM não conhece; identidade real vem do `data/brain.md` |

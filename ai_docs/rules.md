@@ -51,6 +51,16 @@ Whisper (resultado final)
 | Texto reconhecido não-vazio | `whisper_backend.py` | `continue` (ignora frame) |
 | Buffer overflow | `whisper_backend.py` | ignorado silenciosamente |
 
+## Regras de Comportamento do LLM (persona.py)
+
+**6. Não inventar especificações técnicas do carro** — `persona.py:43`
+- Ano, motor, cor, versão — nunca mencionar se não foram explicitamente informados pelo dono
+- Se não souber, não menciona; não tenta inferir ou "adivinhar"
+
+**7. Identidade via brain.md** — `persona.py:44`
+- Quando perguntado "quem você é", a resposta deve usar o que está registrado em `data/brain.md`
+- Não há identidade hardcoded além do nome "Palio"; detalhes pessoais vêm da memória persistente
+
 ## Restrições de Domínio
 
 - **Stateless**: nenhum estado mantido entre comandos; cada frase processada de forma independente

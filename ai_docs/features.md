@@ -198,7 +198,7 @@ Loop contínuo:
 
 **Modelo padrão**: `llama3.2:3b`
 
-**Persona**: O assistente fala como se fosse o próprio carro Fiat Palio — direto, informal, humor seco.
+**Persona**: Assistente de voz integrado no carro — direto, informal, humor seco. Identidade e nome do dono carregados do `data/brain.md` no boot; não se apresenta como IA nem como "o carro".
 
 **Requisito**: Ollama instalado e rodando (`ollama serve`)
 
