@@ -34,7 +34,6 @@ import soundfile as sf
 from piper import PiperVoice
 
 from modules.llm.client import OllamaClient
-from modules.stt.whisper_backend import iniciar_loop_stt
 
 PIPER_MODEL = os.getenv("PIPER_MODEL", os.path.join(_PROJECT_ROOT, "models", "pt_BR-faber-medium.onnx"))
 
@@ -91,6 +90,7 @@ def main():
         sys.exit(0)
 
     # Modo voz: loop STT → LLM → TTS sem wake word
+    from modules.stt.whisper_backend import iniciar_loop_stt
     print("[CHAT] STT, TTS e LLM prontos. Fale algo. Ctrl+C para sair.\n", flush=True)
 
     try:

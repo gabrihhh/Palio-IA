@@ -321,14 +321,14 @@ systemctl enable ollama.service palio-ia.service
 ```bash
 # Testar TTS
 cd /root/Palio-IA
-venv/bin/python test/tts.py "Olá, eu sou o Palio."
+venv/bin/python3 test/tts.py "Olá, eu sou o Palio."
 
 # Testar STT (Ctrl+C para sair)
-venv/bin/python test/stt.py
+venv/bin/python3 test/stt.py
 
 # Testar ciclo completo STT → LLM → TTS (Ctrl+C para sair)
 systemctl start ollama   # sobe o Ollama primeiro
-venv/bin/python test/chat.py
+venv/bin/python3 test/chat.py
 ```
 
 ---
@@ -352,7 +352,7 @@ Após boot:
 |---|---|---|
 | Sem bipes no boot | Serviço não iniciou | `journalctl -u palio-ia.service -n 50` |
 | "Meu cérebro tá offline" ao falar | Ollama não subiu | `systemctl status ollama` → `journalctl -u ollama -n 20` |
-| STT não reconhece nada | Microfone errado | `AUDIO_DEVICE=N venv/bin/python test/stt.py` — listar com `venv/bin/python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(i, p.get_device_info_by_index(i)['name']) for i in range(p.get_device_count()) if p.get_device_info_by_index(i)['maxInputChannels']>0]"` |
-| Wake word não detecta | Threshold alto | `WHISPER_SILENCE_THRESHOLD=200 venv/bin/python test/stt.py` |
+| STT não reconhece nada | Microfone errado | `AUDIO_DEVICE=N venv/bin/python3 test/stt.py` — listar com `venv/bin/python3 -c "import pyaudio; p=pyaudio.PyAudio(); [print(i, p.get_device_info_by_index(i)['name']) for i in range(p.get_device_count()) if p.get_device_info_by_index(i)['maxInputChannels']>0]"` |
+| Wake word não detecta | Threshold alto | `WHISPER_SILENCE_THRESHOLD=200 venv/bin/python3 test/stt.py` |
 | Sem áudio na saída | Sink padrão errado | `pactl list sinks short` → `pactl set-default-sink <nome>` |
 | Bluetooth não conecta no boot | BT não iniciou antes do Palio | `systemctl status bluetooth` → verificar `AutoEnable=true` em `/etc/bluetooth/main.conf` |
