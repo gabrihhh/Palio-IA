@@ -94,7 +94,7 @@ pendrive/
     ├── req-offline.txt
     ├── setup.sh
     ├── models/
-    │   └── pt_BR-cadu-medium.onnx    ← modelo piper (já no repo)
+    │   └── pt_BR-faber-medium.onnx    ← modelo piper (já no repo)
     ├── wheels/                        ← todos os wheels ARM64 (já no repo)
     │   ├── piper_tts-*.whl
     │   ├── faster_whisper-*.whl

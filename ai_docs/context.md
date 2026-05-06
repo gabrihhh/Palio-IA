@@ -57,7 +57,7 @@ Selecionar via `WHISPER_MODEL=medium` (ou `large-v3`).
 | `pyaudio` | 0.2.14 | Captura de microfone em tempo real |
 | `numpy` | 2.2.6 | Manipulação de arrays de áudio |
 | `scipy` | 1.15.1 | `resample_poly` — resampling 48kHz→16kHz (ratio 3:1 limpo, sem artefatos) |
-| `piper-tts` | latest | TTS neural offline — modelo ONNX PT-BR (`pt_BR-cadu-medium`) |
+| `piper-tts` | latest | TTS neural offline — modelo ONNX PT-BR (`pt_BR-faber-medium`) |
 | `onnxruntime` | latest | Runtime ONNX para inferência do modelo piper |
 | `sounddevice` | 0.5.0 | Reprodução de arquivo WAV |
 | `soundfile` | 0.13.1 | Leitura de arquivo WAV |

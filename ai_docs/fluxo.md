@@ -47,7 +47,7 @@ flowchart TD
     LLM --> CLEAN["_limpar_markdown()\nremove ** # ` bullets\nmain.py"]
     CLEAN --> TTS
 
-    TTS["TTS\npiper-tts ONNX (pt_BR-cadu-medium)\nsounddevice · tempfile WAV\nmain.py · falar()"] --> RESTORE["Restaura volume\non_done() · pactl"]
+    TTS["TTS\npiper-tts ONNX (pt_BR-faber-medium)\nsounddevice · tempfile WAV\nmain.py · falar()"] --> RESTORE["Restaura volume\non_done() · pactl"]
     RESTORE --> VPEND_CHECK{Volume\npendente?}
     VPEND_CHECK -- Não --> S1_CAP
     VPEND --> VPEND_CHECK
