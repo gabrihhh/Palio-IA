@@ -106,7 +106,8 @@ Ferramentas para testar componentes isoladamente sem rodar o sistema completo. I
 |---|---|---|
 | `test/stt.py` | `python test/stt.py` | Transcrição contínua em tempo real — sem wake word. Útil para calibrar `WHISPER_SILENCE_THRESHOLD` e verificar precisão PT-BR |
 | `test/tts.py` | `python test/tts.py arquivo.txt` ou `python test/tts.py "texto"` | Carrega piper e fala o texto. Útil para validar qualidade de voz e latência |
-| `test/chat.py` | `python test/chat.py` | Conversa direta STT → Ollama → TTS sem wake word. Útil para testar o ciclo completo e a persona |
+| `test/chat.py` | `python test/chat.py` | Modo voz: STT → Ollama → TTS sem wake word. Útil para testar o ciclo completo e a persona |
+| `test/chat.py` | `python test/chat.py "mensagem"` | Modo texto: envia o texto direto ao Ollama → TTS. Sem microfone. Útil para testar persona e latência isoladamente |
 
 Todos respeitam as mesmas env vars do sistema (`PIPER_MODEL`, `WHISPER_MODEL`, etc.). Não fazem parte do sistema embarcado — são ferramentas de desenvolvimento.
 

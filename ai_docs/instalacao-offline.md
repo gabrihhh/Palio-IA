@@ -50,21 +50,13 @@ preprocessor_config.json
 
 ### 1.3 Baixar o binário Ollama ARM64
 
-No GitHub Releases: `https://github.com/ollama/ollama/releases`
-
-Baixar o arquivo: `ollama-linux-arm64.tar.zst`
-
-Extrair e copiar o binário:
+Baixar e extrair direto para o pendrive com um comando:
 
 ```bash
-mkdir -p Palio-IA/pendrive/ollama
-tar --use-compress-program=zstd -xf ollama-linux-arm64.tar.zst
-# O binário fica em bin/ollama dentro do tar
-cp bin/ollama Palio-IA/pendrive/ollama/ollama
-chmod +x Palio-IA/pendrive/ollama/ollama
+mkdir -p /tmp/ollama-extract && curl -fsSL https://ollama.com/download/ollama-linux-arm64.tar.zst | tar --use-compress-program=zstd -x -C /tmp/ollama-extract && cp /tmp/ollama-extract/bin/ollama Palio-IA/pendrive/ollama/ollama && chmod +x Palio-IA/pendrive/ollama/ollama
 ```
 
-> Se o tar tiver estrutura diferente: `tar --use-compress-program=zstd -tf ollama-linux-arm64.tar.zst | head` para ver o conteúdo antes de extrair.
+> Se o `tar` reclamar do zstd: `sudo apt install zstd`
 
 ---
 

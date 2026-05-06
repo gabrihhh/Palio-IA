@@ -107,22 +107,13 @@ preprocessor_config.json
 
 #### 1.3 Baixar o binário Ollama ARM64
 
-1. Acesse: `https://github.com/ollama/ollama/releases`
-2. Baixe o arquivo `ollama-linux-arm64.tar.zst` da versão mais recente
-3. Extraia e copie o binário:
+Baixar e extrair direto para o pendrive com um comando:
 
 ```bash
-# Extrair (o binário fica em bin/ollama dentro do tar)
-tar --use-compress-program=zstd -xf ollama-linux-arm64.tar.zst
-
-# Copiar para a pasta do pendrive com o nome correto
-mkdir -p Palio-IA/pendrive/ollama
-cp bin/ollama Palio-IA/pendrive/ollama/ollama
-chmod +x Palio-IA/pendrive/ollama/ollama
+mkdir -p /tmp/ollama-extract && curl -fsSL https://ollama.com/download/ollama-linux-arm64.tar.zst | tar --use-compress-program=zstd -x -C /tmp/ollama-extract && cp /tmp/ollama-extract/bin/ollama Palio-IA/pendrive/ollama/ollama && chmod +x Palio-IA/pendrive/ollama/ollama
 ```
 
-> Para ver o conteúdo do tar antes de extrair:
-> `tar --use-compress-program=zstd -tf ollama-linux-arm64.tar.zst | head`
+> Se o `tar` reclamar do zstd: `sudo apt install zstd`
 
 ---
 
@@ -284,9 +275,12 @@ venv/bin/python test/tts.py "Olá, eu sou o Palio."
 # Testar STT (falar e ver a transcrição — Ctrl+C para sair)
 venv/bin/python test/stt.py
 
-# Testar ciclo completo STT → LLM → TTS
+# Testar ciclo completo STT → LLM → TTS (modo voz)
 systemctl start ollama
 venv/bin/python test/chat.py
+
+# Testar LLM → TTS via texto (sem microfone)
+venv/bin/python test/chat.py "olá, qual é o seu nome?"
 ```
 
 ---

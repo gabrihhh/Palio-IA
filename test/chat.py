@@ -1,12 +1,19 @@
 """
-test/chat.py — Teste do Ollama (conversa direta STT → LLM → TTS)
+test/chat.py — Teste do Ollama (conversa direta LLM → TTS)
 
-Conversa direta sem wake word: fale qualquer coisa e o Palio responde.
-Usa a persona e o brain.md normalmente. Útil para testar o ciclo completo
-e medir latência antes de ir ao carro.
+Dois modos de uso:
 
-Uso:
-  python test/chat.py
+  Modo voz (sem argumentos):
+    Fale qualquer coisa e o Palio responde por voz. Sem wake word.
+    Útil para testar o ciclo completo STT → LLM → TTS.
+    python test/chat.py
+
+  Modo texto (com argumento):
+    Passa o texto direto, Ollama processa e responde por voz. Sem STT.
+    Útil para testar a persona e a qualidade da resposta sem microfone.
+    python test/chat.py "qual é o seu nome?"
+
+Usa a persona e o brain.md normalmente em ambos os modos.
 
 Env vars respeitadas:
   PIPER_MODEL, WHISPER_MODEL, WHISPER_SILENCE_THRESHOLD, WHISPER_SILENCE_DURATION
@@ -42,7 +49,18 @@ def _limpar_markdown(texto: str) -> str:
     return texto.strip()
 
 
+def _processar_e_falar(texto: str, llm: "OllamaClient", falar) -> None:
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"[{ts}] Você: \"{texto}\"", flush=True)
+    resposta = llm.chat(texto)
+    resposta_limpa = _limpar_markdown(resposta)
+    print(f"[{ts}] Palio: \"{resposta_limpa}\"", flush=True)
+    falar(resposta_limpa)
+
+
 def main():
+    texto_arg = " ".join(sys.argv[1:]).strip() if len(sys.argv) > 1 else None
+
     print("[CHAT] Carregando modelo TTS...", flush=True)
     voice = PiperVoice.load(PIPER_MODEL)
 
@@ -67,19 +85,17 @@ def main():
         print("[CHAT] Ollama indisponível. Verifique se 'ollama serve' está rodando.", flush=True)
         sys.exit(1)
 
-    print("[CHAT] STT, TTS e LLM prontos. Fale algo. Ctrl+C para sair.\n", flush=True)
+    if texto_arg:
+        # Modo texto: processa o argumento e sai
+        _processar_e_falar(texto_arg, llm, falar)
+        sys.exit(0)
 
-    def on_comando(texto: str) -> None:
-        ts = datetime.now().strftime("%H:%M:%S")
-        print(f"[{ts}] Você: \"{texto}\"", flush=True)
-        resposta = llm.chat(texto)
-        resposta_limpa = _limpar_markdown(resposta)
-        print(f"[{ts}] Palio: \"{resposta_limpa}\"", flush=True)
-        falar(resposta_limpa)
+    # Modo voz: loop STT → LLM → TTS sem wake word
+    print("[CHAT] STT, TTS e LLM prontos. Fale algo. Ctrl+C para sair.\n", flush=True)
 
     try:
         iniciar_loop_stt(
-            on_comando=on_comando,
+            on_comando=lambda texto: _processar_e_falar(texto, llm, falar),
             bypass_wake_word=True,
         )
     except KeyboardInterrupt:
